@@ -1,11 +1,14 @@
 # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
 import math
+import json
+import os
 
 import torch
 import torch.amp as amp
 import torch.nn as nn
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.models.modeling_utils import ModelMixin
+from safetensors.torch import load_file
 
 from .attention import flash_attention
 
@@ -629,3 +632,39 @@ class WanModel(ModelMixin, ConfigMixin):
 
         # init output layer
         nn.init.zeros_(self.head.head.weight)
+    
+    @classmethod
+    def from_single_file(cls, checkpoint_path, config=None):
+        """
+        Load model from a single safetensors file.
+        
+        Args:
+            checkpoint_path: Path to the safetensors file
+            config: Model configuration dict or path to config.json
+        
+        Returns:
+            WanModel instance with loaded weights
+        """
+        # Load config if path provided
+        if isinstance(config, str):
+            with open(config, 'r') as f:
+                config = json.load(f)
+        elif config is None:
+            # Try to find config.json in the same directory
+            config_path = os.path.join(os.path.dirname(checkpoint_path), 'config.json')
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+            else:
+                raise ValueError("No config provided and config.json not found in checkpoint directory")
+        
+        # Create model instance
+        model = cls(**config)
+        
+        # Load state dict from safetensors
+        state_dict = load_file(checkpoint_path)
+        
+        # Load weights
+        model.load_state_dict(state_dict, strict=True)
+        
+        return model

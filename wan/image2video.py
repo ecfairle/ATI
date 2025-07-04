@@ -101,7 +101,8 @@ class WanATI:
             tokenizer_path=os.path.join(checkpoint_dir, config.clip_tokenizer))
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
-        self.model = WanModel.from_pretrained(checkpoint_dir)
+        safetensors_path = os.path.join(checkpoint_dir, 'Wan2_1-I2V-ATI-14B_fp8_e4m3fn.safetensors')
+        self.model = WanModel.from_single_file(safetensors_path)
         self.model.eval().requires_grad_(False)
 
         if t5_fsdp or dit_fsdp or use_usp:
@@ -183,6 +184,9 @@ class WanATI:
         """
         img = TF.to_tensor(img).sub_(0.5).div_(0.5).to(self.device)
         tracks = tracks.to(self.device)[None]
+        
+        logging.info(f"[Input] Image shape: {img.shape}, range: [{img.min():.3f}, {img.max():.3f}]")
+        logging.info(f"[Input] Tracks shape: {tracks.shape}, range: [{tracks.min():.3f}, {tracks.max():.3f}]")
 
         F = frame_num
         h, w = img.shape[1:]
@@ -210,6 +214,9 @@ class WanATI:
             dtype=torch.float32,
             generator=seed_g,
             device=self.device)
+        
+        logging.info(f"[Noise] Initial noise shape: {noise.shape}, range: [{noise.min():.3f}, {noise.max():.3f}]")
+        logging.info(f"[Dimensions] Video: {F} frames, {h}x{w} pixels, Latent: {lat_h}x{lat_w}, max_seq_len: {max_seq_len}")
 
         msk = torch.ones(1, 81, lat_h, lat_w, device=self.device)
         msk[:, 1:] = 0
@@ -228,6 +235,7 @@ class WanATI:
             self.text_encoder.model.to(self.device)
             context = self.text_encoder([input_prompt], self.device)
             context_null = self.text_encoder([n_prompt], self.device)
+            logging.info(f"[Text Encoder] Context shape: {context[0].shape}, range: [{context[0].min():.3f}, {context[0].max():.3f}]")
             if offload_model:
                 self.text_encoder.model.cpu()
         else:
@@ -238,6 +246,7 @@ class WanATI:
 
         self.clip.model.to(self.device)
         clip_context = self.clip.visual([img[:, None, :, :]])
+        logging.info(f"[CLIP] Context shape: {clip_context.shape}, range: [{clip_context.min():.3f}, {clip_context.max():.3f}]")
         if offload_model:
             self.clip.model.cpu()
 
@@ -250,10 +259,13 @@ class WanATI:
             ],
                 dim=1).to(self.device)
         ])[0]
+        logging.info(f"[VAE Encode] Latent shape before mask: {y.shape}, range: [{y.min():.3f}, {y.max():.3f}]")
         y = torch.concat([msk, y])
+        logging.info(f"[VAE Encode] Latent shape after mask: {y.shape}, range: [{y.min():.3f}, {y.max():.3f}]")
 
         with torch.no_grad():
             y = patch_motion(tracks.type(y.dtype), y, training=False)
+            logging.info(f"[Motion Patch] Y shape after patching: {y.shape}, range: [{y.min():.3f}, {y.max():.3f}]")
 
         @contextmanager
         def noop_no_sync():
@@ -306,7 +318,8 @@ class WanATI:
                 torch.cuda.empty_cache()
 
             self.model.to(self.device)
-            for _, t in enumerate(tqdm(timesteps)):
+            logging.info(f"[Sampling] Starting diffusion with {len(timesteps)} steps, solver: {sample_solver}")
+            for step_idx, t in enumerate(tqdm(timesteps)):
                 latent_model_input = [latent.to(self.device)]
                 timestep = [t]
 
@@ -324,6 +337,9 @@ class WanATI:
                     torch.cuda.empty_cache()
                 noise_pred = noise_pred_uncond + guide_scale * (
                     noise_pred_cond - noise_pred_uncond)
+                
+                if step_idx % 10 == 0 or step_idx == len(timesteps) - 1:
+                    logging.info(f"[Step {step_idx}/{len(timesteps)-1}] t={t:.3f}, noise_pred range: [{noise_pred.min():.3f}, {noise_pred.max():.3f}], latent range: [{latent.min():.3f}, {latent.max():.3f}]")
 
                 latent = latent.to(
                     torch.device('cpu') if offload_model else self.device)
@@ -344,7 +360,9 @@ class WanATI:
                 torch.cuda.empty_cache()
 
             if self.rank == 0:
+                logging.info(f"[VAE Decode] Input latent shape: {x0[0].shape}, range: [{x0[0].min():.3f}, {x0[0].max():.3f}]")
                 videos = self.vae.decode(x0)
+                logging.info(f"[Output] Video shape: {videos[0].shape}, range: [{videos[0].min():.3f}, {videos[0].max():.3f}]")
 
         del noise, latent
         del sample_scheduler
