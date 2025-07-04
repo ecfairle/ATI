@@ -56,6 +56,15 @@ def flash_attention(
     deterministic:  bool. If True, slightly slower and uses more memory.
     dtype:          torch.dtype. Apply when dtype of q/k/v is not float16/bfloat16.
     """
+    # If flash attention is not available, fall back to standard attention
+    if not FLASH_ATTN_2_AVAILABLE and not FLASH_ATTN_3_AVAILABLE:
+        return standard_attention(
+            q=q, k=k, v=v, q_lens=q_lens, k_lens=k_lens,
+            dropout_p=dropout_p, softmax_scale=softmax_scale,
+            q_scale=q_scale, causal=causal, window_size=window_size,
+            deterministic=deterministic, dtype=dtype
+        )
+    
     half_dtypes = (torch.float16, torch.bfloat16)
     assert dtype in half_dtypes
     assert q.device.type == 'cuda' and q.size(-1) <= 256
@@ -137,6 +146,61 @@ def flash_attention(
     return x.type(out_dtype)
 
 
+def standard_attention(
+    q,
+    k,
+    v,
+    q_lens=None,
+    k_lens=None,
+    dropout_p=0.,
+    softmax_scale=None,
+    q_scale=None,
+    causal=False,
+    window_size=(-1, -1),
+    deterministic=False,
+    dtype=torch.bfloat16,
+):
+    """
+    Standard attention implementation without flash_attn dependency.
+    Uses PyTorch's scaled_dot_product_attention.
+    """
+    # Convert to appropriate dtype
+    if dtype in (torch.float16, torch.bfloat16):
+        q = q.to(dtype)
+        k = k.to(dtype)
+        v = v.to(dtype)
+    
+    # Apply q_scale if provided
+    if q_scale is not None:
+        q = q * q_scale
+    
+    # Handle variable length sequences
+    if q_lens is not None or k_lens is not None:
+        warnings.warn(
+            'Padding mask is disabled when using scaled_dot_product_attention. '
+            'It can have a significant impact on performance.'
+        )
+    
+    # Transpose for scaled_dot_product_attention: [B, L, N, C] -> [B, N, L, C]
+    q = q.transpose(1, 2)
+    k = k.transpose(1, 2)
+    v = v.transpose(1, 2)
+    
+    # Apply scaled dot product attention
+    out = torch.nn.functional.scaled_dot_product_attention(
+        q, k, v,
+        attn_mask=None,
+        dropout_p=dropout_p if q.requires_grad else 0.0,
+        is_causal=causal,
+        scale=softmax_scale
+    )
+    
+    # Transpose back: [B, N, L, C] -> [B, L, N, C]
+    out = out.transpose(1, 2).contiguous()
+    
+    return out
+
+
 def attention(
     q,
     k,
@@ -152,35 +216,19 @@ def attention(
     dtype=torch.bfloat16,
     fa_version=None,
 ):
-    if FLASH_ATTN_2_AVAILABLE or FLASH_ATTN_3_AVAILABLE:
-        return flash_attention(
-            q=q,
-            k=k,
-            v=v,
-            q_lens=q_lens,
-            k_lens=k_lens,
-            dropout_p=dropout_p,
-            softmax_scale=softmax_scale,
-            q_scale=q_scale,
-            causal=causal,
-            window_size=window_size,
-            deterministic=deterministic,
-            dtype=dtype,
-            version=fa_version,
-        )
-    else:
-        if q_lens is not None or k_lens is not None:
-            warnings.warn(
-                'Padding mask is disabled when using scaled_dot_product_attention. It can have a significant impact on performance.'
-            )
-        attn_mask = None
-
-        q = q.transpose(1, 2).to(dtype)
-        k = k.transpose(1, 2).to(dtype)
-        v = v.transpose(1, 2).to(dtype)
-
-        out = torch.nn.functional.scaled_dot_product_attention(
-            q, k, v, attn_mask=attn_mask, is_causal=causal, dropout_p=dropout_p)
-
-        out = out.transpose(1, 2).contiguous()
-        return out
+    # Always use flash_attention which now has built-in fallback
+    return flash_attention(
+        q=q,
+        k=k,
+        v=v,
+        q_lens=q_lens,
+        k_lens=k_lens,
+        dropout_p=dropout_p,
+        softmax_scale=softmax_scale,
+        q_scale=q_scale,
+        causal=causal,
+        window_size=window_size,
+        deterministic=deterministic,
+        dtype=dtype,
+        version=fa_version,
+    )
