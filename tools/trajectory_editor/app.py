@@ -124,17 +124,24 @@ def store_tracks():
         return pts.reshape(FIXED_LENGTH, 1, 3)
 
     arrs = []
+    all_trajectories = []  # Store raw trajectories for text export
 
     # 1) Freehand tracks
     for i, tr in enumerate(free_tracks):
         pts = pad_pts(tr)
         arrs.append(pts,)
+        # Keep only valid points (not padded) for text export
+        valid_tr = [{'x': int(p['x']), 'y': int(p['y'])} for p in tr[:FIXED_LENGTH]]
+        all_trajectories.append(valid_tr)
 
     # 2) Circle + Static combined
     for i, tr in enumerate(circ_trajs):
         pts = pad_pts(tr)
-
         arrs.append(pts)
+        # Keep only valid points (not padded) for text export
+        valid_tr = [{'x': int(p['x']), 'y': int(p['y'])} for p in tr[:FIXED_LENGTH]]
+        all_trajectories.append(valid_tr)
+        
     print(arrs)
     # Nothing to save?
     if not arrs:
@@ -161,6 +168,11 @@ def store_tracks():
 
     # Save updated track file
     array_to_npz_bytes(all_tracks, track_path, compressed=True)
+    
+    # Save text format trajectories
+    text_path = os.path.join(TRACKS_DIR, f"{image_id:02d}_trajectories.txt")
+    with open(text_path, 'w') as f:
+        f.write(str(all_trajectories))
 
     # Build overlay PNG
     img_path = os.path.join(IMAGES_DIR, f"{image_id:02d}.{ext}")
