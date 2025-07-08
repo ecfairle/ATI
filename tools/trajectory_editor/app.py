@@ -213,7 +213,8 @@ def store_tracks():
 
     return jsonify({
         'status': 'ok',
-        'overlay_url': f"{STATIC_BASE}/images_tracks/{overlay_file}"
+        'overlay_url': f"{STATIC_BASE}/images_tracks/{overlay_file}",
+        'trajectories': all_trajectories
     })
 
 

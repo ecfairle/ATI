@@ -95,6 +95,11 @@
     </div>
   </div>
 
+  <!-- Coordinate display area -->
+  <div style="margin-top: 20px;">
+    <h3>Stored Coordinates:</h3>
+    <textarea id="coordinateDisplay" readonly style="width: 100%; height: 200px; font-family: monospace; font-size: 12px;"></textarea>
+  </div>
   
   <script>
   // ——— DOM refs —————————————————————————————————————————
@@ -118,7 +123,8 @@
         motionXInput            = document.getElementById('motionXInput'),
         motionYInput            = document.getElementById('motionYInput'),
         applySelectedMotionBtn  = document.getElementById('applySelectedMotionBtn'),
-        applyAllMotionBtn       = document.getElementById('applyAllMotionBtn');
+        applyAllMotionBtn       = document.getElementById('applyAllMotionBtn'),
+        coordinateDisplay       = document.getElementById('coordinateDisplay');
 
   let img, image_id, ext, origW, origH,
       scaleX=1, scaleY=1;
@@ -176,6 +182,11 @@
     const js = await res.json();
     img.src=js.overlay_url;
     img.onload=()=>ctx.drawImage(img,0,0,canvas.width,canvas.height);
+
+    // Display trajectories in textarea
+    if (js.trajectories) {
+      coordinateDisplay.value = JSON.stringify(js.trajectories, null, 2);
+    }
 
     // reset UI
     free_tracks=[]; circle=null; static_trajs=[];
