@@ -637,19 +637,19 @@ class CLIPModel:
                 q_weight = state_dict[f'{prefix}.q_proj.weight']
                 k_weight = state_dict[f'{prefix}.k_proj.weight']
                 v_weight = state_dict[f'{prefix}.v_proj.weight']
-                converted[f'transformer.{i}.to_qkv.weight'] = torch.cat([q_weight, k_weight, v_weight], dim=0)
+                converted[f'transformer.{i}.attn.to_qkv.weight'] = torch.cat([q_weight, k_weight, v_weight], dim=0)
                 
                 if f'{prefix}.q_proj.bias' in state_dict:
                     q_bias = state_dict[f'{prefix}.q_proj.bias']
                     k_bias = state_dict[f'{prefix}.k_proj.bias']
                     v_bias = state_dict[f'{prefix}.v_proj.bias']
-                    converted[f'transformer.{i}.to_qkv.bias'] = torch.cat([q_bias, k_bias, v_bias], dim=0)
+                    converted[f'transformer.{i}.attn.to_qkv.bias'] = torch.cat([q_bias, k_bias, v_bias], dim=0)
             
             # Output projection
             if f'{prefix}.out_proj.weight' in state_dict:
-                converted[f'transformer.{i}.proj.weight'] = state_dict[f'{prefix}.out_proj.weight']
+                converted[f'transformer.{i}.attn.proj.weight'] = state_dict[f'{prefix}.out_proj.weight']
                 if f'{prefix}.out_proj.bias' in state_dict:
-                    converted[f'transformer.{i}.proj.bias'] = state_dict[f'{prefix}.out_proj.bias']
+                    converted[f'transformer.{i}.attn.proj.bias'] = state_dict[f'{prefix}.out_proj.bias']
             
             # Layer norm 2
             if f'vision_model.encoder.layers.{i}.layer_norm2.weight' in state_dict:
