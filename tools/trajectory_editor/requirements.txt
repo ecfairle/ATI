@@ -1,0 +1,6 @@
+Flask==3.0.0
+Pillow==10.2.0
+matplotlib==3.8.2
+numpy==1.26.3
+PyYAML==6.0.1
+torch==2.4.0
