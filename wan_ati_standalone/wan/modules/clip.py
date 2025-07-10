@@ -506,31 +506,70 @@ class CLIPModel:
         self.checkpoint_path = checkpoint_path
         self.tokenizer_path = tokenizer_path
 
-        # init model
-        self.model, self.transforms = clip_xlm_roberta_vit_h_14(
-            pretrained=False,
-            return_transforms=True,
-            return_tokenizer=False,
-            dtype=dtype,
-            device=device)
+        # Create vision-only model instead of full CLIP
+        logging.info(f'Creating vision-only model for {checkpoint_path}')
+        
+        # Vision transformer config from clip_xlm_roberta_vit_h_14
+        vision_cfg = dict(
+            image_size=224,
+            patch_size=14,
+            dim=1280,
+            mlp_ratio=4,
+            out_dim=1024,
+            num_heads=16,
+            num_layers=32,
+            pool_type='token',
+            pre_norm=True,
+            post_norm=False,
+            activation='gelu',
+            attn_dropout=0.0,
+            proj_dropout=0.0,
+            embedding_dropout=0.0,
+            norm_eps=1e-5
+        )
+        
+        # Create only the vision transformer
+        with torch.device(device):
+            self.model = VisionTransformer(**vision_cfg)
+        self.model = self.model.to(dtype=dtype, device=device)
         self.model = self.model.eval().requires_grad_(False)
+        
+        # Load checkpoint
         logging.info(f'loading {checkpoint_path}')
         if checkpoint_path.endswith('.safetensors'):
             from safetensors.torch import load_file
             state_dict = load_file(checkpoint_path)
         else:
             state_dict = torch.load(checkpoint_path, map_location='cpu')
-        self.model.load_state_dict(state_dict)
-
-        # init tokenizer
-        self.tokenizer = HuggingfaceTokenizer(
-            name=tokenizer_path,
-            seq_len=self.model.max_text_len - 2,
-            clean='whitespace')
+        
+        # Remove any prefix from keys if present
+        cleaned_state_dict = {}
+        for k, v in state_dict.items():
+            # Remove common prefixes like 'visual.', 'vision.', 'model.', etc.
+            new_k = k
+            for prefix in ['visual.', 'vision.', 'model.', 'module.']:
+                if new_k.startswith(prefix):
+                    new_k = new_k[len(prefix):]
+            cleaned_state_dict[new_k] = v
+        
+        self.model.load_state_dict(cleaned_state_dict)
+        
+        # Set up transforms
+        mean = [0.48145466, 0.4578275, 0.40821073]
+        std = [0.26862954, 0.26130258, 0.27577711]
+        self.transforms = T.Compose([
+            T.Resize((vision_cfg['image_size'], vision_cfg['image_size']),
+                     interpolation=T.InterpolationMode.BICUBIC),
+            T.ToTensor(),
+            T.Normalize(mean=mean, std=std)
+        ])
+        
+        # Store image size for compatibility
+        self.image_size = vision_cfg['image_size']
 
     def visual(self, videos):
         # preprocess
-        size = (self.model.image_size,) * 2
+        size = (self.image_size,) * 2
         videos = torch.cat([
             F.interpolate(
                 u.transpose(0, 1),
@@ -540,7 +579,7 @@ class CLIPModel:
         ])
         videos = self.transforms.transforms[-1](videos.mul_(0.5).add_(0.5))
 
-        # forward
+        # forward - now calling the vision transformer directly
         with torch.cuda.amp.autocast(dtype=self.dtype):
-            out = self.model.visual(videos, use_31_block=True)
+            out = self.model(videos, use_31_block=True)
             return out
