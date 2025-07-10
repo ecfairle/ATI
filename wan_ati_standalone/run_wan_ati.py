@@ -63,6 +63,13 @@ def parse_args():
         help="Output video path (default: wan_ati_output_TIMESTAMP.mp4)"
     )
     parser.add_argument(
+        "--resolution",
+        type=str,
+        default="720p",
+        choices=["480p", "720p", "1080p"],
+        help="Output resolution (default: 720p)"
+    )
+    parser.add_argument(
         "--sampling_steps",
         type=int,
         default=40,
@@ -86,11 +93,40 @@ def parse_args():
         default="cuda:0",
         help="Device to run on (default: cuda:0)"
     )
+    parser.add_argument(
+        "--enable_xformers",
+        action="store_true",
+        help="Enable xformers memory efficient attention"
+    )
+    parser.add_argument(
+        "--enable_tf32",
+        action="store_true",
+        help="Enable TF32 for faster computation"
+    )
+    parser.add_argument(
+        "--vae_cpu_offload",
+        action="store_true",
+        help="Offload VAE to CPU after encoding"
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    
+    # Memory optimizations
+    if args.enable_tf32:
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        logging.info("Enabled TF32 for faster computation")
+    
+    # Set memory fraction to avoid fragmentation
+    torch.cuda.set_per_process_memory_fraction(0.95)
+    
+    # Clear cache before starting
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
     
     # Set device
     device_id = int(args.device.split(':')[1]) if ':' in args.device else 0
@@ -136,11 +172,24 @@ def main():
     logging.info(f"Generating video with prompt: {args.prompt}")
     logging.info(f"Parameters: steps={args.sampling_steps}, guidance={args.guide_scale}, seed={args.seed}")
     
+    # Set max area based on resolution
+    resolution_map = {
+        "480p": 480 * 832,   # Lower resolution
+        "720p": 720 * 1280,  # Default
+        "1080p": 1080 * 1920 # High resolution (needs more VRAM)
+    }
+    max_area = resolution_map[args.resolution]
+    
+    # Log memory usage before generation
+    if torch.cuda.is_available():
+        logging.info(f"GPU memory allocated: {torch.cuda.memory_allocated()/1024**3:.2f} GB")
+        logging.info(f"GPU memory reserved: {torch.cuda.memory_reserved()/1024**3:.2f} GB")
+    
     video = wan_ati.generate(
         input_prompt=args.prompt,
         img=img,
         tracks=tracks,
-        max_area=720 * 1280,  # 720p resolution
+        max_area=max_area,
         frame_num=81,         # 81 frames (must be 4n+1)
         shift=5.0,            # Noise schedule shift
         sample_solver='unipc',
