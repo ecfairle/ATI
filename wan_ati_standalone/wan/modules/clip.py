@@ -510,6 +510,21 @@ class CLIPModel:
         logging.info(f'Creating vision-only model for {checkpoint_path}')
         
         # Vision transformer config from clip_xlm_roberta_vit_h_14
+        # First, peek at the checkpoint to determine number of layers
+        if checkpoint_path.endswith('.safetensors'):
+            from safetensors.torch import load_file
+            temp_state_dict = load_file(checkpoint_path)
+        else:
+            temp_state_dict = torch.load(checkpoint_path, map_location='cpu')
+        
+        # Detect number of layers from checkpoint
+        layer_keys = [k for k in temp_state_dict.keys() if 'encoder.layers.' in k]
+        if layer_keys:
+            num_layers = max([int(k.split('.')[3]) for k in layer_keys]) + 1
+            logging.info(f"Detected {num_layers} layers in checkpoint")
+        else:
+            num_layers = 32  # default
+        
         vision_cfg = dict(
             image_size=224,
             patch_size=14,
@@ -517,7 +532,7 @@ class CLIPModel:
             mlp_ratio=4,
             out_dim=1024,
             num_heads=16,
-            num_layers=32,
+            num_layers=num_layers,
             pool_type='token',
             pre_norm=True,
             post_norm=False,
@@ -534,25 +549,38 @@ class CLIPModel:
         self.model = self.model.to(dtype=dtype, device=device)
         self.model = self.model.eval().requires_grad_(False)
         
-        # Load checkpoint
+        # Load checkpoint (use the already loaded temp_state_dict)
         logging.info(f'loading {checkpoint_path}')
-        if checkpoint_path.endswith('.safetensors'):
-            from safetensors.torch import load_file
-            state_dict = load_file(checkpoint_path)
+        state_dict = temp_state_dict
+        
+        # Check if this is a HuggingFace format checkpoint
+        if any(k.startswith('vision_model.') for k in state_dict.keys()):
+            logging.info("Detected HuggingFace CLIP format, converting keys...")
+            converted_state_dict = self._convert_huggingface_clip_to_vision_transformer(state_dict)
         else:
-            state_dict = torch.load(checkpoint_path, map_location='cpu')
+            # Remove any prefix from keys if present
+            cleaned_state_dict = {}
+            for k, v in state_dict.items():
+                # Remove common prefixes like 'visual.', 'vision.', 'model.', etc.
+                new_k = k
+                for prefix in ['visual.', 'vision.', 'model.', 'module.']:
+                    if new_k.startswith(prefix):
+                        new_k = new_k[len(prefix):]
+                cleaned_state_dict[new_k] = v
+            converted_state_dict = cleaned_state_dict
         
-        # Remove any prefix from keys if present
-        cleaned_state_dict = {}
-        for k, v in state_dict.items():
-            # Remove common prefixes like 'visual.', 'vision.', 'model.', etc.
-            new_k = k
-            for prefix in ['visual.', 'vision.', 'model.', 'module.']:
-                if new_k.startswith(prefix):
-                    new_k = new_k[len(prefix):]
-            cleaned_state_dict[new_k] = v
-        
-        self.model.load_state_dict(cleaned_state_dict)
+        # Try loading with better error reporting
+        try:
+            self.model.load_state_dict(converted_state_dict, strict=True)
+        except RuntimeError as e:
+            logging.warning(f"Strict loading failed: {e}")
+            # Load with strict=False and report what's missing/unexpected
+            missing, unexpected = self.model.load_state_dict(converted_state_dict, strict=False)
+            if missing:
+                logging.warning(f"Missing keys: {missing[:10]}...")  # Show first 10
+            if unexpected:
+                logging.warning(f"Unexpected keys: {unexpected[:10]}...")  # Show first 10
+            logging.info("Loaded with strict=False")
         
         # Set up transforms
         mean = [0.48145466, 0.4578275, 0.40821073]
@@ -566,6 +594,82 @@ class CLIPModel:
         
         # Store image size for compatibility
         self.image_size = vision_cfg['image_size']
+    
+    def _convert_huggingface_clip_to_vision_transformer(self, state_dict):
+        """Convert HuggingFace CLIP checkpoint to our VisionTransformer format."""
+        converted = {}
+        
+        # Map embeddings
+        if 'vision_model.embeddings.patch_embedding.weight' in state_dict:
+            converted['patch_embedding.weight'] = state_dict['vision_model.embeddings.patch_embedding.weight']
+        if 'vision_model.embeddings.patch_embedding.bias' in state_dict:
+            converted['patch_embedding.bias'] = state_dict['vision_model.embeddings.patch_embedding.bias']
+        
+        # Map class embedding (CLS token)
+        if 'vision_model.embeddings.class_embedding' in state_dict:
+            converted['cls_embedding'] = state_dict['vision_model.embeddings.class_embedding'].unsqueeze(0).unsqueeze(0)
+        
+        # Map position embedding
+        if 'vision_model.embeddings.position_embedding.weight' in state_dict:
+            converted['pos_embedding'] = state_dict['vision_model.embeddings.position_embedding.weight'].unsqueeze(0)
+        
+        # Map pre/post layer norms
+        if 'vision_model.pre_layrnorm.weight' in state_dict:  # Note: typo in checkpoint "layrnorm"
+            converted['pre_norm.weight'] = state_dict['vision_model.pre_layrnorm.weight']
+            converted['pre_norm.bias'] = state_dict['vision_model.pre_layrnorm.bias']
+        if 'vision_model.post_layernorm.weight' in state_dict:
+            converted['post_norm.weight'] = state_dict['vision_model.post_layernorm.weight']
+            converted['post_norm.bias'] = state_dict['vision_model.post_layernorm.bias']
+        
+        # Map transformer layers
+        num_layers = max([int(k.split('.')[3]) for k in state_dict.keys() if 'vision_model.encoder.layers.' in k]) + 1
+        
+        for i in range(num_layers):
+            # Layer norm 1
+            if f'vision_model.encoder.layers.{i}.layer_norm1.weight' in state_dict:
+                converted[f'transformer.{i}.norm1.weight'] = state_dict[f'vision_model.encoder.layers.{i}.layer_norm1.weight']
+                converted[f'transformer.{i}.norm1.bias'] = state_dict[f'vision_model.encoder.layers.{i}.layer_norm1.bias']
+            
+            # Self attention
+            prefix = f'vision_model.encoder.layers.{i}.self_attn'
+            if f'{prefix}.q_proj.weight' in state_dict:
+                # Combine Q, K, V projections
+                q_weight = state_dict[f'{prefix}.q_proj.weight']
+                k_weight = state_dict[f'{prefix}.k_proj.weight']
+                v_weight = state_dict[f'{prefix}.v_proj.weight']
+                converted[f'transformer.{i}.to_qkv.weight'] = torch.cat([q_weight, k_weight, v_weight], dim=0)
+                
+                if f'{prefix}.q_proj.bias' in state_dict:
+                    q_bias = state_dict[f'{prefix}.q_proj.bias']
+                    k_bias = state_dict[f'{prefix}.k_proj.bias']
+                    v_bias = state_dict[f'{prefix}.v_proj.bias']
+                    converted[f'transformer.{i}.to_qkv.bias'] = torch.cat([q_bias, k_bias, v_bias], dim=0)
+            
+            # Output projection
+            if f'{prefix}.out_proj.weight' in state_dict:
+                converted[f'transformer.{i}.proj.weight'] = state_dict[f'{prefix}.out_proj.weight']
+                if f'{prefix}.out_proj.bias' in state_dict:
+                    converted[f'transformer.{i}.proj.bias'] = state_dict[f'{prefix}.out_proj.bias']
+            
+            # Layer norm 2
+            if f'vision_model.encoder.layers.{i}.layer_norm2.weight' in state_dict:
+                converted[f'transformer.{i}.norm2.weight'] = state_dict[f'vision_model.encoder.layers.{i}.layer_norm2.weight']
+                converted[f'transformer.{i}.norm2.bias'] = state_dict[f'vision_model.encoder.layers.{i}.layer_norm2.bias']
+            
+            # MLP
+            mlp_prefix = f'vision_model.encoder.layers.{i}.mlp'
+            if f'{mlp_prefix}.fc1.weight' in state_dict:
+                converted[f'transformer.{i}.mlp.0.weight'] = state_dict[f'{mlp_prefix}.fc1.weight']
+                converted[f'transformer.{i}.mlp.0.bias'] = state_dict[f'{mlp_prefix}.fc1.bias']
+                converted[f'transformer.{i}.mlp.2.weight'] = state_dict[f'{mlp_prefix}.fc2.weight']
+                converted[f'transformer.{i}.mlp.2.bias'] = state_dict[f'{mlp_prefix}.fc2.bias']
+        
+        # Map the projection head (visual_projection)
+        if 'visual_projection.weight' in state_dict:
+            # For 'token' pool type, we use a parameter, not a linear layer
+            converted['head'] = state_dict['visual_projection.weight'].T  # Transpose for parameter format
+        
+        return converted
 
     def visual(self, videos):
         # preprocess
