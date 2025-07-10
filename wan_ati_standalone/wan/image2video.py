@@ -83,7 +83,7 @@ class WanATI:
             dtype=config.t5_dtype,
             device=torch.device('cpu'),
             checkpoint_path=os.path.join(checkpoint_dir, config.t5_checkpoint),
-            tokenizer_path=os.path.join(checkpoint_dir, config.t5_tokenizer),
+            tokenizer_path=config.t5_tokenizer,  # HuggingFace model ID
             shard_fn=shard_fn if t5_fsdp else None,
         )
 
@@ -98,7 +98,7 @@ class WanATI:
             device=self.device,
             checkpoint_path=os.path.join(checkpoint_dir,
                                          config.clip_checkpoint),
-            tokenizer_path=os.path.join(checkpoint_dir, config.clip_tokenizer))
+            tokenizer_path=config.clip_tokenizer)  # HuggingFace model ID
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
         safetensors_path = os.path.join(checkpoint_dir, 'Wan2_1-I2V-ATI-14B_fp8_e4m3fn.safetensors')
