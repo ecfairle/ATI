@@ -493,7 +493,12 @@ class T5EncoderModel:
             dtype=dtype,
             device=device).eval().requires_grad_(False)
         logging.info(f'loading {checkpoint_path}')
-        model.load_state_dict(torch.load(checkpoint_path, map_location='cpu'))
+        if checkpoint_path.endswith('.safetensors'):
+            from safetensors.torch import load_file
+            state_dict = load_file(checkpoint_path)
+        else:
+            state_dict = torch.load(checkpoint_path, map_location='cpu')
+        model.load_state_dict(state_dict)
         self.model = model
         if shard_fn is not None:
             self.model = shard_fn(self.model, sync_module_states=False)

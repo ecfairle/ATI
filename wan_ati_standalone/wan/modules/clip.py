@@ -515,8 +515,12 @@ class CLIPModel:
             device=device)
         self.model = self.model.eval().requires_grad_(False)
         logging.info(f'loading {checkpoint_path}')
-        self.model.load_state_dict(
-            torch.load(checkpoint_path, map_location='cpu'))
+        if checkpoint_path.endswith('.safetensors'):
+            from safetensors.torch import load_file
+            state_dict = load_file(checkpoint_path)
+        else:
+            state_dict = torch.load(checkpoint_path, map_location='cpu')
+        self.model.load_state_dict(state_dict)
 
         # init tokenizer
         self.tokenizer = HuggingfaceTokenizer(
