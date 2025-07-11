@@ -718,7 +718,7 @@ class WanModel(ModelMixin, ConfigMixin):
         if keep_fp8 and "fp8" in checkpoint_path.lower():
             # For FP8 models, we need to use our custom loader
             # First, materialize the model to CPU
-            model = model.to('cpu')
+            model = model.to_empty(device='cpu')
             
             # Use custom loader that preserves FP8 dtypes
             load_state_dict_fp8(model, state_dict, strict=True)
