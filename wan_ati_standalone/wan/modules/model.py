@@ -712,7 +712,9 @@ def _patch_model_for_fp8(model):
             weight = self.weight.to(input.dtype)
         else:
             weight = self.weight
-        return F.linear(input, weight, self.bias)
+        # Also convert bias if needed
+        bias = self.bias.to(input.dtype) if self.bias is not None else None
+        return F.linear(input, weight, bias)
     
     def fp8_conv3d_forward(self, input):
         # Convert FP8 weight to compute dtype for the operation
@@ -720,22 +722,27 @@ def _patch_model_for_fp8(model):
             weight = self.weight.to(input.dtype)
         else:
             weight = self.weight
-        return F.conv3d(input, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+        # Also convert bias if needed
+        bias = self.bias.to(input.dtype) if self.bias is not None else None
+        return F.conv3d(input, weight, bias, self.stride, self.padding, self.dilation, self.groups)
     
     # Patch all Linear and Conv layers
     import types
     fp8_count = 0
+    patched_count = 0
+    
     for module in model.modules():
         if isinstance(module, nn.Linear):
-            # Check if weight is FP8
+            # Always patch to handle mixed precision properly
+            module.forward = types.MethodType(fp8_linear_forward, module)
+            patched_count += 1
             if hasattr(torch, 'float8_e4m3fn') and module.weight.dtype == torch.float8_e4m3fn:
-                module.forward = types.MethodType(fp8_linear_forward, module)
                 fp8_count += 1
         elif isinstance(module, nn.Conv3d):
-            # Check if weight is FP8
+            # Always patch to handle mixed precision properly
+            module.forward = types.MethodType(fp8_conv3d_forward, module)
+            patched_count += 1
             if hasattr(torch, 'float8_e4m3fn') and module.weight.dtype == torch.float8_e4m3fn:
-                module.forward = types.MethodType(fp8_conv3d_forward, module)
                 fp8_count += 1
     
-    if fp8_count > 0:
-        logging.info(f"Patched {fp8_count} layers for FP8 computation")
+    logging.info(f"Patched {patched_count} layers for mixed precision computation ({fp8_count} with FP8 weights)")
