@@ -15,6 +15,14 @@ def load_state_dict_fp8(model: nn.Module, state_dict: Dict[str, torch.Tensor], s
     This function bypasses PyTorch's automatic dtype conversion by directly
     assigning parameter data.
     """
+    # First check if model has meta tensors
+    has_meta = any(p.is_meta for p in model.parameters())
+    if has_meta:
+        # If model has meta tensors, we need to materialize it first
+        # This should have been done by the caller, but let's be safe
+        device = next(iter(state_dict.values())).device
+        model = model.to(device)
+    
     model_state = model.state_dict()
     
     # Track what we're loading

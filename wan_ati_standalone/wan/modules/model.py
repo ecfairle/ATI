@@ -665,8 +665,12 @@ class WanModel(ModelMixin, ConfigMixin):
             else:
                 raise ValueError("No config provided and config.json not found in checkpoint directory")
         
-        # Create model instance
-        model = cls(**config)
+        # Create model instance with meta tensors to avoid allocating memory twice
+        with torch.device('meta'):
+            model = cls(**config)
+        
+        # Default load device
+        load_device = 'cpu'
         
         # Check if this is an FP8 model
         if "fp8" in checkpoint_path.lower():
@@ -680,26 +684,41 @@ class WanModel(ModelMixin, ConfigMixin):
                 logging.info("Loading FP8 model to CPU first (will move to GPU later with FP8 preservation)")
             
             # Load with FP8-aware loading
+            # Use smaller chunks for memory-constrained systems
             state_dict = load_fp8_checkpoint(
                 checkpoint_path, 
                 device=load_device, 
                 dtype_override=dtype_override,
-                keep_fp8=keep_fp8
+                keep_fp8=keep_fp8,
+                max_memory_gb=10.0  # Reduce chunk size to 10GB
             )
         else:
-            # Load state dict from safetensors normally
-            state_dict = load_file(checkpoint_path)
+            # Even for non-FP8 models, use chunked loading for large models
+            # Check file size first
+            import os
+            file_size_gb = os.path.getsize(checkpoint_path) / (1024**3)
+            if file_size_gb > 20:  # If larger than 20GB, use chunked loading
+                logging.info(f"Large checkpoint detected ({file_size_gb:.1f}GB), using chunked loading")
+                state_dict = load_fp8_checkpoint(
+                    checkpoint_path,
+                    device=load_device,
+                    dtype_override=dtype_override,
+                    keep_fp8=False,
+                    max_memory_gb=10.0
+                )
+            else:
+                # Load state dict from safetensors normally for smaller models
+                state_dict = load_file(checkpoint_path)
         
         # Log model size
         model_size_gb = get_model_size_gb(state_dict)
         logging.info(f"Model size in memory: {model_size_gb:.2f} GB")
         
-        # Load weights
+        # Load weights - use assign=True to properly handle meta tensors
         if keep_fp8 and "fp8" in checkpoint_path.lower():
-            # Move model to GPU first if state dict is already on GPU
-            # if next(iter(state_dict.values())).is_cuda:
-            #     logging.info("Moving model to GPU before loading state dict")
-            #     model = model.cuda()
+            # For FP8 models, we need to use our custom loader
+            # First, materialize the model to CPU
+            model = model.to('cpu')
             
             # Use custom loader that preserves FP8 dtypes
             load_state_dict_fp8(model, state_dict, strict=True)
@@ -707,8 +726,8 @@ class WanModel(ModelMixin, ConfigMixin):
             # Patch linear layers to handle FP8 computation
             _patch_model_for_fp8(model)
         else:
-            # Use standard loading
-            model.load_state_dict(state_dict, strict=True)
+            # Use standard loading with assign=True for meta tensors
+            model.load_state_dict(state_dict, strict=True, assign=True)
         
         return model
     
