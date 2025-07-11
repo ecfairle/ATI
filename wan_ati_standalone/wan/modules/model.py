@@ -707,22 +707,14 @@ def _patch_model_for_fp8(model):
     import torch.nn.functional as F
     
     def fp8_linear_forward(self, input):
-        # Convert FP8 weight to compute dtype for the operation
-        if hasattr(torch, 'float8_e4m3fn') and self.weight.dtype == torch.float8_e4m3fn:
-            weight = self.weight.to(input.dtype)
-        else:
-            weight = self.weight
-        # Also convert bias if needed
+        # Always convert weight and bias to match input dtype
+        weight = self.weight.to(input.dtype)
         bias = self.bias.to(input.dtype) if self.bias is not None else None
         return F.linear(input, weight, bias)
     
     def fp8_conv3d_forward(self, input):
-        # Convert FP8 weight to compute dtype for the operation
-        if hasattr(torch, 'float8_e4m3fn') and self.weight.dtype == torch.float8_e4m3fn:
-            weight = self.weight.to(input.dtype)
-        else:
-            weight = self.weight
-        # Also convert bias if needed
+        # Always convert weight and bias to match input dtype
+        weight = self.weight.to(input.dtype)
         bias = self.bias.to(input.dtype) if self.bias is not None else None
         return F.conv3d(input, weight, bias, self.stride, self.padding, self.dilation, self.groups)
     
