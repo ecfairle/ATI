@@ -147,6 +147,9 @@ class WanATI:
             keep_fp8=keep_fp8
         )
         self.model.eval().requires_grad_(False)
+        
+        # Store whether we're using FP8
+        self.using_fp8 = keep_fp8
 
         if t5_fsdp or dit_fsdp or use_usp:
             init_on_cpu = False
@@ -172,7 +175,12 @@ class WanATI:
             self.model = shard_fn(self.model)
         else:
             if not init_on_cpu:
-                self.model.to(self.device)
+                if self.using_fp8:
+                    # Import here to avoid circular dependency
+                    from .utils.fp8_model_loader import move_model_to_device_fp8
+                    self.model = move_model_to_device_fp8(self.model, str(self.device))
+                else:
+                    self.model.to(self.device)
 
         self.sample_neg_prompt = config.sample_neg_prompt
 
@@ -372,7 +380,12 @@ class WanATI:
             gc.collect()
             torch.cuda.empty_cache()
 
-            self.model.to(self.device)
+            if self.using_fp8:
+                # Import here to avoid circular dependency
+                from .utils.fp8_model_loader import move_model_to_device_fp8
+                self.model = move_model_to_device_fp8(self.model, str(self.device))
+            else:
+                self.model.to(self.device)
             logging.info(f"[Sampling] Starting diffusion with {len(timesteps)} steps, solver: {sample_solver}")
             logging.info(f"[Memory] Before sampling: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated, {torch.cuda.memory_reserved()/1024**3:.2f}GB reserved")
             

@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from wan.modules.model import WanModel
 from wan.configs.wan_i2v_14B import i2v_14B
+from wan.utils.fp8_model_loader import move_model_to_device_fp8
 
 # Setup logging
 logging.basicConfig(
@@ -102,8 +103,26 @@ def main():
         # Try to move to GPU if available
         if torch.cuda.is_available():
             logging.info("Moving model to GPU...")
-            model = model.cuda()
+            if keep_fp8:
+                # Use FP8-aware moving
+                model = move_model_to_device_fp8(model, 'cuda')
+            else:
+                model = model.cuda()
             log_memory("After moving to GPU")
+            
+            # Check parameter dtypes after moving to GPU
+            param_dtypes_gpu = {}
+            total_params_gpu = 0
+            for name, param in model.named_parameters():
+                dtype = str(param.dtype)
+                if dtype not in param_dtypes_gpu:
+                    param_dtypes_gpu[dtype] = 0
+                param_dtypes_gpu[dtype] += param.numel()
+                total_params_gpu += param.numel()
+            
+            logging.info(f"After GPU move - Total parameters: {total_params_gpu / 1e9:.2f}B")
+            for dtype, count in param_dtypes_gpu.items():
+                logging.info(f"  {dtype}: {count / 1e9:.2f}B parameters")
             
             # Try a dummy forward pass with minimal input
             logging.info("Testing forward pass...")

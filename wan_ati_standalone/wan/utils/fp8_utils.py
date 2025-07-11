@@ -117,8 +117,21 @@ def get_model_size_gb(state_dict):
     if hasattr(torch, 'float8_e5m2'):
         dtype_bytes[torch.float8_e5m2] = 1
     
-    for tensor in state_dict.values():
+    # Count parameters by dtype
+    dtype_counts = {}
+    for name, tensor in state_dict.items():
+        dtype = str(tensor.dtype)
+        if dtype not in dtype_counts:
+            dtype_counts[dtype] = {'count': 0, 'params': 0}
+        dtype_counts[dtype]['count'] += 1
+        dtype_counts[dtype]['params'] += tensor.numel()
+        
         bytes_per_elem = dtype_bytes.get(tensor.dtype, 4)  # Default to 4 if unknown
         total_bytes += tensor.numel() * bytes_per_elem
+    
+    # Log dtype distribution
+    logging.info("State dict dtype distribution:")
+    for dtype, info in dtype_counts.items():
+        logging.info(f"  {dtype}: {info['count']} tensors, {info['params']/1e9:.2f}B params")
     
     return total_bytes / (1024 ** 3)  # Convert to GB

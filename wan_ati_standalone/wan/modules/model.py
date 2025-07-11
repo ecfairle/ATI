@@ -650,6 +650,7 @@ class WanModel(ModelMixin, ConfigMixin):
         """
         # Import here to avoid circular dependency
         from ..utils.fp8_utils import load_fp8_checkpoint, get_model_size_gb
+        from ..utils.fp8_model_loader import load_state_dict_fp8
         
         # Load config if path provided
         if isinstance(config, str):
@@ -687,6 +688,54 @@ class WanModel(ModelMixin, ConfigMixin):
         logging.info(f"Model size in memory: {model_size_gb:.2f} GB")
         
         # Load weights
-        model.load_state_dict(state_dict, strict=True)
+        if keep_fp8 and "fp8" in checkpoint_path.lower():
+            # Use custom loader that preserves FP8 dtypes
+            load_state_dict_fp8(model, state_dict, strict=True)
+            
+            # Patch linear layers to handle FP8 computation
+            _patch_model_for_fp8(model)
+        else:
+            # Use standard loading
+            model.load_state_dict(state_dict, strict=True)
         
         return model
+    
+
+def _patch_model_for_fp8(model):
+    """Patch model to handle FP8 weights during computation"""
+    import torch.nn as nn
+    import torch.nn.functional as F
+    
+    def fp8_linear_forward(self, input):
+        # Convert FP8 weight to compute dtype for the operation
+        if hasattr(torch, 'float8_e4m3fn') and self.weight.dtype == torch.float8_e4m3fn:
+            weight = self.weight.to(input.dtype)
+        else:
+            weight = self.weight
+        return F.linear(input, weight, self.bias)
+    
+    def fp8_conv3d_forward(self, input):
+        # Convert FP8 weight to compute dtype for the operation
+        if hasattr(torch, 'float8_e4m3fn') and self.weight.dtype == torch.float8_e4m3fn:
+            weight = self.weight.to(input.dtype)
+        else:
+            weight = self.weight
+        return F.conv3d(input, weight, self.bias, self.stride, self.padding, self.dilation, self.groups)
+    
+    # Patch all Linear and Conv layers
+    import types
+    fp8_count = 0
+    for module in model.modules():
+        if isinstance(module, nn.Linear):
+            # Check if weight is FP8
+            if hasattr(torch, 'float8_e4m3fn') and module.weight.dtype == torch.float8_e4m3fn:
+                module.forward = types.MethodType(fp8_linear_forward, module)
+                fp8_count += 1
+        elif isinstance(module, nn.Conv3d):
+            # Check if weight is FP8
+            if hasattr(torch, 'float8_e4m3fn') and module.weight.dtype == torch.float8_e4m3fn:
+                module.forward = types.MethodType(fp8_conv3d_forward, module)
+                fp8_count += 1
+    
+    if fp8_count > 0:
+        logging.info(f"Patched {fp8_count} layers for FP8 computation")
