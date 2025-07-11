@@ -697,9 +697,9 @@ class WanModel(ModelMixin, ConfigMixin):
         # Load weights
         if keep_fp8 and "fp8" in checkpoint_path.lower():
             # Move model to GPU first if state dict is already on GPU
-            if next(iter(state_dict.values())).is_cuda:
-                logging.info("Moving model to GPU before loading state dict")
-                model = model.cuda()
+            # if next(iter(state_dict.values())).is_cuda:
+            #     logging.info("Moving model to GPU before loading state dict")
+            #     model = model.cuda()
             
             # Use custom loader that preserves FP8 dtypes
             load_state_dict_fp8(model, state_dict, strict=True)
