@@ -120,6 +120,7 @@ class WanATI:
         }
         
         self.model = WanModel.from_single_file(safetensors_path, config=model_config)
+        self.model = self.model.to(dtype=self.param_dtype)  # Convert model to bfloat16
         self.model.eval().requires_grad_(False)
 
         if t5_fsdp or dit_fsdp or use_usp:
@@ -317,6 +318,12 @@ class WanATI:
             # sample videos
             latent = noise
 
+            # Log tensor sizes before creating args
+            logging.info(f"[Memory Debug] Context shape: {context[0].shape}, dtype: {context[0].dtype}")
+            logging.info(f"[Memory Debug] Clip context shape: {clip_context.shape}, dtype: {clip_context.dtype}")
+            logging.info(f"[Memory Debug] Y shape: {y.shape}, dtype: {y.dtype}")
+            logging.info(f"[Memory Debug] Max seq len: {max_seq_len}")
+            
             arg_c = {
                 'context': [context[0].to(self.param_dtype)],
                 'clip_fea': clip_context.to(self.param_dtype),
@@ -333,6 +340,12 @@ class WanATI:
 
             if offload_model:
                 torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                
+            # Force garbage collection before model loading
+            import gc
+            gc.collect()
+            torch.cuda.empty_cache()
 
             self.model.to(self.device)
             logging.info(f"[Sampling] Starting diffusion with {len(timesteps)} steps, solver: {sample_solver}")
