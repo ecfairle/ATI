@@ -102,7 +102,24 @@ class WanATI:
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
         safetensors_path = os.path.join(checkpoint_dir, 'Wan2_1-I2V-ATI-14B_fp8_e4m3fn.safetensors')
-        self.model = WanModel.from_single_file(safetensors_path)
+        
+        # Create model config from our config
+        model_config = {
+            '_class_name': 'WanModel',
+            '_diffusers_version': '0.30.0',
+            'model_type': 'i2v',
+            'text_len': config.text_len,
+            'in_dim': 36,  # 16 VAE + 20 conditioning channels
+            'dim': config.dim,
+            'ffn_dim': config.ffn_dim,
+            'freq_dim': config.freq_dim,
+            'out_dim': 16,
+            'num_heads': config.num_heads,
+            'num_layers': config.num_layers,
+            'eps': config.eps
+        }
+        
+        self.model = WanModel.from_single_file(safetensors_path, config=model_config)
         self.model.eval().requires_grad_(False)
 
         if t5_fsdp or dit_fsdp or use_usp:
@@ -211,14 +228,14 @@ class WanATI:
             16, (F - 1) // 4 + 1,
             lat_h,
             lat_w,
-            dtype=torch.float32,
+            dtype=self.param_dtype,
             generator=seed_g,
             device=self.device)
         
         logging.info(f"[Noise] Initial noise shape: {noise.shape}, range: [{noise.min():.3f}, {noise.max():.3f}]")
         logging.info(f"[Dimensions] Video: {F} frames, {h}x{w} pixels, Latent: {lat_h}x{lat_w}, max_seq_len: {max_seq_len}")
 
-        msk = torch.ones(1, 81, lat_h, lat_w, device=self.device)
+        msk = torch.ones(1, 81, lat_h, lat_w, device=self.device, dtype=self.param_dtype)
         msk[:, 1:] = 0
         msk = torch.concat([
             torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]
@@ -260,7 +277,7 @@ class WanATI:
                 dim=1).to(self.device)
         ])[0]
         logging.info(f"[VAE Encode] Latent shape before mask: {y.shape}, range: [{y.min():.3f}, {y.max():.3f}]")
-        y = torch.concat([msk, y])
+        y = torch.concat([msk, y.to(self.param_dtype)])
         logging.info(f"[VAE Encode] Latent shape after mask: {y.shape}, range: [{y.min():.3f}, {y.max():.3f}]")
 
         with torch.no_grad():
@@ -301,15 +318,15 @@ class WanATI:
             latent = noise
 
             arg_c = {
-                'context': [context[0]],
-                'clip_fea': clip_context,
+                'context': [context[0].to(self.param_dtype)],
+                'clip_fea': clip_context.to(self.param_dtype),
                 'seq_len': max_seq_len,
                 'y': [y],
             }
 
             arg_null = {
-                'context': context_null,
-                'clip_fea': clip_context,
+                'context': [c.to(self.param_dtype) for c in context_null],
+                'clip_fea': clip_context.to(self.param_dtype),
                 'seq_len': max_seq_len,
                 'y': [y],
             }
@@ -319,6 +336,8 @@ class WanATI:
 
             self.model.to(self.device)
             logging.info(f"[Sampling] Starting diffusion with {len(timesteps)} steps, solver: {sample_solver}")
+            logging.info(f"[Memory] Before sampling: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated, {torch.cuda.memory_reserved()/1024**3:.2f}GB reserved")
+            
             for step_idx, t in enumerate(tqdm(timesteps)):
                 latent_model_input = [latent.to(self.device)]
                 timestep = [t]
