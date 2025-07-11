@@ -100,10 +100,15 @@ If you run into memory issues:
 
 ### FP8 Model Support
 
-The model file `Wan2_1-I2V-ATI-14B_fp8_e4m3fn.safetensors` is quantized to FP8 format, which significantly reduces memory usage. The implementation:
-- Keeps model weights in FP8 format when possible
-- Uses BFloat16 for activations and computations
-- Automatically detects FP8 support in PyTorch
+The model file `Wan2_1-I2V-ATI-14B_fp8_e4m3fn.safetensors` is quantized to FP8 format, which significantly reduces memory usage from ~65GB (FP32) to ~16GB (FP8). The implementation:
+- Automatically detects PyTorch FP8 support (requires PyTorch 2.1+)
+- Keeps model weights in native FP8 format (torch.float8_e4m3fn) when supported
+- Uses BFloat16 for activations and intermediate computations
+- Falls back to BFloat16 conversion if FP8 is not supported
+
+With FP8 support enabled:
+- Model weights: ~16.4GB (1 byte per parameter)
+- Total VRAM usage: ~20-24GB during inference
 
 ### Testing and Debugging
 

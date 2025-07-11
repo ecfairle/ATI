@@ -635,7 +635,7 @@ class WanModel(ModelMixin, ConfigMixin):
         nn.init.zeros_(self.head.head.weight)
     
     @classmethod
-    def from_single_file(cls, checkpoint_path, config=None, dtype_override=None):
+    def from_single_file(cls, checkpoint_path, config=None, dtype_override=None, keep_fp8=False):
         """
         Load model from a single safetensors file.
         
@@ -643,6 +643,7 @@ class WanModel(ModelMixin, ConfigMixin):
             checkpoint_path: Path to the safetensors file
             config: Model configuration dict or path to config.json
             dtype_override: If specified, convert weights to this dtype (e.g., torch.bfloat16)
+            keep_fp8: If True and FP8 is supported, keep FP8 tensors in native format
         
         Returns:
             WanModel instance with loaded weights
@@ -669,13 +670,14 @@ class WanModel(ModelMixin, ConfigMixin):
         # Check if this is an FP8 model
         if "fp8" in checkpoint_path.lower():
             logging.info("Detected FP8 model from filename")
-            # For FP8 models, we should convert to a supported dtype
-            if dtype_override is None:
-                dtype_override = torch.bfloat16
-                logging.info(f"FP8 model will be converted to {dtype_override} for computation")
             
             # Load with FP8-aware loading
-            state_dict = load_fp8_checkpoint(checkpoint_path, device='cpu', dtype_override=dtype_override)
+            state_dict = load_fp8_checkpoint(
+                checkpoint_path, 
+                device='cpu', 
+                dtype_override=dtype_override,
+                keep_fp8=keep_fp8
+            )
         else:
             # Load state dict from safetensors normally
             state_dict = load_file(checkpoint_path)

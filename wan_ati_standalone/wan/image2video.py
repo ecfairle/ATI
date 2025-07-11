@@ -121,18 +121,30 @@ class WanATI:
         
         # Determine dtype for model loading
         if "fp8" in safetensors_path:
-            logging.info("FP8 model detected - will convert to bfloat16 for inference")
-            dtype_override = torch.bfloat16
-            self.compute_dtype = torch.bfloat16
+            # Check if we can use native FP8
+            fp8_supported = hasattr(torch, 'float8_e4m3fn')
+            if fp8_supported:
+                logging.info("FP8 model detected - will keep in native FP8 format")
+                # Keep FP8 weights, but use bfloat16 for computations
+                self.compute_dtype = torch.bfloat16
+                keep_fp8 = True
+                dtype_override = None
+            else:
+                logging.info("FP8 model detected but FP8 not supported - will convert to bfloat16")
+                dtype_override = torch.bfloat16
+                self.compute_dtype = torch.bfloat16
+                keep_fp8 = False
         else:
             dtype_override = self.param_dtype
             self.compute_dtype = self.param_dtype
+            keep_fp8 = False
         
         # Load model with appropriate dtype conversion
         self.model = WanModel.from_single_file(
             safetensors_path, 
             config=model_config,
-            dtype_override=dtype_override
+            dtype_override=dtype_override,
+            keep_fp8=keep_fp8
         )
         self.model.eval().requires_grad_(False)
 

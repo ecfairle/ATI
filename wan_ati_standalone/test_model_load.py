@@ -67,12 +67,21 @@ def main():
     try:
         # Load model
         logging.info(f"Loading model from {safetensors_path}")
-        # Force bfloat16 for FP8 models to save memory
-        dtype_override = torch.bfloat16 if "fp8" in safetensors_path else None
+        # Try to keep FP8 if supported
+        fp8_supported = hasattr(torch, 'float8_e4m3fn')
+        if "fp8" in safetensors_path and fp8_supported:
+            logging.info("Will attempt to keep model in FP8 format")
+            keep_fp8 = True
+            dtype_override = None
+        else:
+            keep_fp8 = False
+            dtype_override = torch.bfloat16 if "fp8" in safetensors_path else None
+            
         model = WanModel.from_single_file(
             safetensors_path, 
             config=model_config,
-            dtype_override=dtype_override
+            dtype_override=dtype_override,
+            keep_fp8=keep_fp8
         )
         log_memory("After model load")
         
