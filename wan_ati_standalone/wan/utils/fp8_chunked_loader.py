@@ -13,7 +13,7 @@ def load_fp8_checkpoint_chunked(
     checkpoint_path: str,
     device: str = 'cpu', 
     keep_fp8: bool = True,
-    max_memory_gb: float = 20.0,
+    max_memory_gb: float = 10.0,
     metadata: Optional[Dict] = None,
     dtype_override: Optional[torch.dtype] = None
 ) -> Dict[str, torch.Tensor]:
