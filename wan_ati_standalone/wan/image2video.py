@@ -120,7 +120,25 @@ class WanATI:
         }
         
         self.model = WanModel.from_single_file(safetensors_path, config=model_config)
-        self.model = self.model.to(dtype=self.param_dtype)  # Convert model to bfloat16
+        # Keep model in fp8 if it's already quantized, otherwise convert to bfloat16
+        # The model file name suggests it's fp8_e4m3fn format
+        if "fp8" in safetensors_path:
+            logging.info("Model appears to be in FP8 format")
+            # Check if PyTorch supports FP8
+            fp8_supported = hasattr(torch, 'float8_e4m3fn') and hasattr(torch, 'float8_e5m2')
+            if fp8_supported:
+                logging.info("PyTorch FP8 support detected")
+            else:
+                logging.warning("PyTorch FP8 support not detected - model weights will be converted")
+            
+            # FP8 models need special handling - we'll use bfloat16 for activations
+            self.compute_dtype = torch.bfloat16
+            # Log the model's parameter dtypes
+            param_dtypes = {str(p.dtype) for p in self.model.parameters()}
+            logging.info(f"Model parameter dtypes: {param_dtypes}")
+        else:
+            self.model = self.model.to(dtype=self.param_dtype)
+            self.compute_dtype = self.param_dtype
         self.model.eval().requires_grad_(False)
 
         if t5_fsdp or dit_fsdp or use_usp:
@@ -229,14 +247,14 @@ class WanATI:
             16, (F - 1) // 4 + 1,
             lat_h,
             lat_w,
-            dtype=self.param_dtype,
+            dtype=self.compute_dtype,
             generator=seed_g,
             device=self.device)
         
         logging.info(f"[Noise] Initial noise shape: {noise.shape}, range: [{noise.min():.3f}, {noise.max():.3f}]")
         logging.info(f"[Dimensions] Video: {F} frames, {h}x{w} pixels, Latent: {lat_h}x{lat_w}, max_seq_len: {max_seq_len}")
 
-        msk = torch.ones(1, 81, lat_h, lat_w, device=self.device, dtype=self.param_dtype)
+        msk = torch.ones(1, 81, lat_h, lat_w, device=self.device, dtype=self.compute_dtype)
         msk[:, 1:] = 0
         msk = torch.concat([
             torch.repeat_interleave(msk[:, 0:1], repeats=4, dim=1), msk[:, 1:]
@@ -278,7 +296,7 @@ class WanATI:
                 dim=1).to(self.device)
         ])[0]
         logging.info(f"[VAE Encode] Latent shape before mask: {y.shape}, range: [{y.min():.3f}, {y.max():.3f}]")
-        y = torch.concat([msk, y.to(self.param_dtype)])
+        y = torch.concat([msk, y.to(self.compute_dtype)])
         logging.info(f"[VAE Encode] Latent shape after mask: {y.shape}, range: [{y.min():.3f}, {y.max():.3f}]")
 
         with torch.no_grad():
@@ -292,7 +310,7 @@ class WanATI:
         no_sync = getattr(self.model, 'no_sync', noop_no_sync)
 
         # evaluation mode
-        with amp.autocast(dtype=self.param_dtype), torch.no_grad(), no_sync():
+        with amp.autocast(dtype=self.compute_dtype), torch.no_grad(), no_sync():
 
             if sample_solver == 'unipc':
                 sample_scheduler = FlowUniPCMultistepScheduler(
@@ -325,15 +343,15 @@ class WanATI:
             logging.info(f"[Memory Debug] Max seq len: {max_seq_len}")
             
             arg_c = {
-                'context': [context[0].to(self.param_dtype)],
-                'clip_fea': clip_context.to(self.param_dtype),
+                'context': [context[0].to(self.compute_dtype)],
+                'clip_fea': clip_context.to(self.compute_dtype),
                 'seq_len': max_seq_len,
                 'y': [y],
             }
 
             arg_null = {
-                'context': [c.to(self.param_dtype) for c in context_null],
-                'clip_fea': clip_context.to(self.param_dtype),
+                'context': [c.to(self.compute_dtype) for c in context_null],
+                'clip_fea': clip_context.to(self.compute_dtype),
                 'seq_len': max_seq_len,
                 'y': [y],
             }
@@ -356,12 +374,21 @@ class WanATI:
                 timestep = [t]
 
                 timestep = torch.stack(timestep).to(self.device)
+                
+                # Log memory before model forward
+                if step_idx == 0:
+                    logging.info(f"[Memory] Before first model forward: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated")
 
                 noise_pred_cond = self.model(
                     latent_model_input, t=timestep, **arg_c)[0].to(
                         torch.device('cpu') if offload_model else self.device)
                 if offload_model:
                     torch.cuda.empty_cache()
+                    
+                # Log memory after first forward
+                if step_idx == 0:
+                    logging.info(f"[Memory] After first model forward: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated")
+                    
                 noise_pred_uncond = self.model(
                     latent_model_input, t=timestep, **arg_null)[0].to(
                         torch.device('cpu') if offload_model else self.device)
@@ -372,6 +399,7 @@ class WanATI:
                 
                 if step_idx % 10 == 0 or step_idx == len(timesteps) - 1:
                     logging.info(f"[Step {step_idx}/{len(timesteps)-1}] t={t:.3f}, noise_pred range: [{noise_pred.min():.3f}, {noise_pred.max():.3f}], latent range: [{latent.min():.3f}, {latent.max():.3f}]")
+                    logging.info(f"[Memory] {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated")
 
                 latent = latent.to(
                     torch.device('cpu') if offload_model else self.device)

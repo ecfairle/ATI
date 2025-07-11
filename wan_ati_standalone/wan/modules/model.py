@@ -664,6 +664,12 @@ class WanModel(ModelMixin, ConfigMixin):
         # Load state dict from safetensors
         state_dict = load_file(checkpoint_path)
         
+        # Check if this is an FP8 model
+        if "fp8" in checkpoint_path.lower():
+            logging.info("Loading FP8 quantized model")
+            # For FP8 models, we need to handle the dtype carefully
+            # The weights will remain in FP8, but we'll do computations in a supported dtype
+        
         # Load weights
         model.load_state_dict(state_dict, strict=True)
         
