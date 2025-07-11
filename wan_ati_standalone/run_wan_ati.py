@@ -108,6 +108,11 @@ def parse_args():
         action="store_true",
         help="Offload VAE to CPU after encoding"
     )
+    parser.add_argument(
+        "--low_memory_mode",
+        action="store_true",
+        help="Enable aggressive memory optimizations (slower but uses less VRAM)"
+    )
     return parser.parse_args()
 
 
@@ -179,6 +184,11 @@ def main():
         "1080p": 1080 * 1920 # High resolution (needs more VRAM)
     }
     max_area = resolution_map[args.resolution]
+    
+    # In low memory mode, use even smaller resolution
+    if args.low_memory_mode:
+        max_area = min(max_area, 480 * 640)
+        logging.info("Low memory mode enabled - using reduced resolution")
     
     # Log memory usage before generation
     if torch.cuda.is_available():
