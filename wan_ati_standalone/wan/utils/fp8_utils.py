@@ -10,7 +10,7 @@ from .safetensors_utils import load_checkpoint_in_chunks, get_checkpoint_metadat
 from .fp8_chunked_loader import load_fp8_checkpoint_chunked
 
 
-def load_fp8_checkpoint(checkpoint_path, device='cpu', dtype_override=None, keep_fp8=False):
+def load_fp8_checkpoint(checkpoint_path, device='cpu', dtype_override=None, keep_fp8=False, max_memory_gb=20.0):
     """
     Load a checkpoint that contains FP8 tensors.
     
@@ -19,6 +19,7 @@ def load_fp8_checkpoint(checkpoint_path, device='cpu', dtype_override=None, keep
         device: Device to load tensors to
         dtype_override: If specified, convert all tensors to this dtype
         keep_fp8: If True and FP8 is supported, keep FP8 tensors as FP8
+        max_memory_gb: Maximum memory to use during loading (in GB)
     
     Returns:
         state_dict with appropriate dtypes
@@ -58,36 +59,22 @@ def load_fp8_checkpoint(checkpoint_path, device='cpu', dtype_override=None, keep
             checkpoint_path, 
             device=device, 
             keep_fp8=True,
-            max_memory_gb=20.0,  # Use up to 20GB at a time
+            max_memory_gb=max_memory_gb,
             metadata=metadata
         )
         return state_dict
     elif dtype_override is not None:
         logging.info(f"Loading checkpoint with dtype override to {dtype_override}")
-        # For now, fall back to regular loading with dtype override
-        # TODO: Implement chunked loading with dtype override
-        logging.warning("Using standard loading for dtype override (may use more memory)")
-        raw_state_dict = load_file(checkpoint_path, device=device)
-        
-        state_dict = {}
-        for key, tensor in raw_state_dict.items():
-            # Check if this tensor was originally FP8
-            original_dtype = metadata.get(key, {}).get('dtype', 'unknown')
-            
-            if original_dtype in ['F8_E4M3', 'F8_E5M2']:
-                # This was an FP8 tensor, convert to override dtype
-                state_dict[key] = tensor.to(dtype_override)
-            else:
-                # Non-FP8 tensors (like biases, norms) keep their precision or convert
-                if tensor.dtype == torch.float32 and dtype_override in [torch.float16, torch.bfloat16]:
-                    # Keep float32 for small tensors like biases and norms
-                    if tensor.numel() < 10000:  # Small tensors
-                        state_dict[key] = tensor
-                    else:
-                        state_dict[key] = tensor.to(dtype_override)
-                else:
-                    state_dict[key] = tensor
-        
+        # Use memory-efficient chunked loading with dtype override
+        logging.info("Using chunked loading for dtype override to save memory")
+        state_dict = load_fp8_checkpoint_chunked(
+            checkpoint_path, 
+            device=device, 
+            keep_fp8=False,
+            max_memory_gb=max_memory_gb,
+            metadata=metadata,
+            dtype_override=dtype_override
+        )
         return state_dict
     else:
         # Load with original dtypes (safetensors will convert FP8 to FP32)
