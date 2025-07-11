@@ -207,7 +207,7 @@ def main():
         guide_scale=args.guide_scale,
         n_prompt="",          # Empty negative prompt
         seed=args.seed,
-        offload_model=True    # Offload to CPU to save VRAM
+        offload_model=False    # Offload to CPU to save VRAM
     )
     
     # Save video
