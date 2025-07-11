@@ -10,7 +10,7 @@ from .safetensors_utils import load_checkpoint_in_chunks, get_checkpoint_metadat
 from .fp8_chunked_loader import load_fp8_checkpoint_chunked
 
 
-def load_fp8_checkpoint(checkpoint_path, device='cpu', dtype_override=None, keep_fp8=False, max_memory_gb=20.0):
+def load_fp8_checkpoint(checkpoint_path, device='cpu', dtype_override=None, keep_fp8=False, max_memory_gb=10.0):
     """
     Load a checkpoint that contains FP8 tensors.
     
