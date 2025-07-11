@@ -675,9 +675,9 @@ class WanModel(ModelMixin, ConfigMixin):
             # Determine device for loading
             load_device = 'cpu'
             if keep_fp8 and torch.cuda.is_available():
-                # Load directly to GPU to save CPU memory when keeping FP8
-                load_device = 'cuda'
-                logging.info("Loading FP8 model directly to GPU to save CPU memory")
+                # Load to CPU first to avoid GPU OOM during parameter cloning
+                load_device = 'cpu'
+                logging.info("Loading FP8 model to CPU first (will move to GPU later with FP8 preservation)")
             
             # Load with FP8-aware loading
             state_dict = load_fp8_checkpoint(
