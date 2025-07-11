@@ -6,6 +6,8 @@ import torch
 import logging
 from safetensors.torch import load_file
 import json
+from .safetensors_utils import load_checkpoint_in_chunks, get_checkpoint_metadata
+from .fp8_chunked_loader import load_fp8_checkpoint_chunked
 
 
 def load_fp8_checkpoint(checkpoint_path, device='cpu', dtype_override=None, keep_fp8=False):
@@ -49,32 +51,25 @@ def load_fp8_checkpoint(checkpoint_path, device='cpu', dtype_override=None, keep
     
     # Load the checkpoint
     if keep_fp8 and fp8_supported:
-        # Special handling to keep FP8 tensors
-        logging.info("Loading checkpoint while preserving FP8 tensors")
-        state_dict = {}
-        raw_state_dict = load_file(checkpoint_path, device=device)
-        
-        for key, tensor in raw_state_dict.items():
-            # Check if this tensor was originally FP8
-            original_dtype = metadata.get(key, {}).get('dtype', 'unknown')
-            
-            if original_dtype == 'F8_E4M3':
-                # Convert to torch.float8_e4m3fn
-                state_dict[key] = tensor.to(torch.float8_e4m3fn)
-            elif original_dtype == 'F8_E5M2' and hasattr(torch, 'float8_e5m2'):
-                # Convert to torch.float8_e5m2
-                state_dict[key] = tensor.to(torch.float8_e5m2)
-            else:
-                # Keep non-FP8 tensors as-is (biases, norms stay in FP32)
-                state_dict[key] = tensor
-        
+        # Use memory-efficient chunked loading
+        logging.info("Loading checkpoint while preserving FP8 tensors (chunked loading)")
+        # Pass metadata for dtype detection
+        state_dict = load_fp8_checkpoint_chunked(
+            checkpoint_path, 
+            device=device, 
+            keep_fp8=True,
+            max_memory_gb=20.0,  # Use up to 20GB at a time
+            metadata=metadata
+        )
         return state_dict
     elif dtype_override is not None:
         logging.info(f"Loading checkpoint with dtype override to {dtype_override}")
-        # Load and convert all tensors to the specified dtype
-        state_dict = {}
+        # For now, fall back to regular loading with dtype override
+        # TODO: Implement chunked loading with dtype override
+        logging.warning("Using standard loading for dtype override (may use more memory)")
         raw_state_dict = load_file(checkpoint_path, device=device)
         
+        state_dict = {}
         for key, tensor in raw_state_dict.items():
             # Check if this tensor was originally FP8
             original_dtype = metadata.get(key, {}).get('dtype', 'unknown')

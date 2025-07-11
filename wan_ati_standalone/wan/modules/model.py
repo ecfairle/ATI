@@ -672,10 +672,17 @@ class WanModel(ModelMixin, ConfigMixin):
         if "fp8" in checkpoint_path.lower():
             logging.info("Detected FP8 model from filename")
             
+            # Determine device for loading
+            load_device = 'cpu'
+            if keep_fp8 and torch.cuda.is_available():
+                # Load directly to GPU to save CPU memory when keeping FP8
+                load_device = 'cuda'
+                logging.info("Loading FP8 model directly to GPU to save CPU memory")
+            
             # Load with FP8-aware loading
             state_dict = load_fp8_checkpoint(
                 checkpoint_path, 
-                device='cpu', 
+                device=load_device, 
                 dtype_override=dtype_override,
                 keep_fp8=keep_fp8
             )
@@ -689,6 +696,11 @@ class WanModel(ModelMixin, ConfigMixin):
         
         # Load weights
         if keep_fp8 and "fp8" in checkpoint_path.lower():
+            # Move model to GPU first if state dict is already on GPU
+            if next(iter(state_dict.values())).is_cuda:
+                logging.info("Moving model to GPU before loading state dict")
+                model = model.cuda()
+            
             # Use custom loader that preserves FP8 dtypes
             load_state_dict_fp8(model, state_dict, strict=True)
             

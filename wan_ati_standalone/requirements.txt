@@ -24,3 +24,6 @@ pyyaml>=6.0
 # Optional but recommended for better performance
 opencv-python>=4.8.0
 scipy>=1.9.0
+
+# Memory monitoring
+psutil>=5.9.0
