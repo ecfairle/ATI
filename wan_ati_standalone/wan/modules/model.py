@@ -718,6 +718,12 @@ def _patch_model_for_fp8(model):
         bias = self.bias.to(input.dtype) if self.bias is not None else None
         return F.conv3d(input, weight, bias, self.stride, self.padding, self.dilation, self.groups)
     
+    def fp8_layernorm_forward(self, input):
+        # Convert weight and bias to match input dtype
+        weight = self.weight.to(input.dtype) if self.weight is not None else None
+        bias = self.bias.to(input.dtype) if self.bias is not None else None
+        return F.layer_norm(input, self.normalized_shape, weight, bias, self.eps)
+    
     # Patch all Linear and Conv layers
     import types
     fp8_count = 0
@@ -736,5 +742,9 @@ def _patch_model_for_fp8(model):
             patched_count += 1
             if hasattr(torch, 'float8_e4m3fn') and module.weight.dtype == torch.float8_e4m3fn:
                 fp8_count += 1
+        elif isinstance(module, (nn.LayerNorm, WanLayerNorm)):
+            # Always patch to handle mixed precision properly
+            module.forward = types.MethodType(fp8_layernorm_forward, module)
+            patched_count += 1
     
     logging.info(f"Patched {patched_count} layers for mixed precision computation ({fp8_count} with FP8 weights)")
