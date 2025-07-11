@@ -155,7 +155,7 @@ def main():
         dit_fsdp=False,
         use_usp=False,
         t5_cpu=False,
-        init_on_cpu=True
+        init_on_cpu=False
     )
     
     # Load input image
