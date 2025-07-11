@@ -90,16 +90,42 @@ Motion trajectory files (`.pth` format) contain:
 - First run may be slower due to model compilation
 - Generation takes approximately 2-5 minutes depending on GPU
 
+## Memory Optimization Tips
+
+If you run into memory issues:
+1. Use lower resolution: `--resolution 480p`
+2. Enable TF32 for faster computation: `--enable_tf32`
+3. Enable low memory mode: `--low_memory_mode` (uses even smaller resolution)
+4. The model automatically offloads to CPU during generation
+
+### FP8 Model Support
+
+The model file `Wan2_1-I2V-ATI-14B_fp8_e4m3fn.safetensors` is quantized to FP8 format, which significantly reduces memory usage. The implementation:
+- Keeps model weights in FP8 format when possible
+- Uses BFloat16 for activations and computations
+- Automatically detects FP8 support in PyTorch
+
+### Testing and Debugging
+
+Test scripts are provided:
+- `test_memory.py` - Check FP8 support and memory capabilities
+- `test_model_load.py <checkpoint_dir>` - Test model loading and memory usage
+
 ## Troubleshooting
 
 1. **Out of Memory**: The model requires significant VRAM. Try:
-   - Ensuring no other processes are using the GPU
-   - Using a GPU with more VRAM
+   - Using `--resolution 480p` for lower memory usage
+   - Enable `--low_memory_mode` for aggressive memory optimization
+   - Enable `--enable_tf32` for faster computation
    - The script already includes automatic model offloading
 
 2. **Slow Generation**: This is normal for large diffusion models. Each of the 40 sampling steps requires a full forward pass through the 14B parameter model.
 
 3. **Missing Checkpoints**: Ensure all required model files are in the checkpoint directory with correct names.
+
+4. **CUDA/RTX 5090 Issues**: For newer GPUs like RTX 5090:
+   - Ensure you have PyTorch 2.0+ with CUDA 12.1+ support
+   - The model will automatically use compute-compatible dtypes
 
 ## License
 

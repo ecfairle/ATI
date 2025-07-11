@@ -67,7 +67,13 @@ def main():
     try:
         # Load model
         logging.info(f"Loading model from {safetensors_path}")
-        model = WanModel.from_single_file(safetensors_path, config=model_config)
+        # Force bfloat16 for FP8 models to save memory
+        dtype_override = torch.bfloat16 if "fp8" in safetensors_path else None
+        model = WanModel.from_single_file(
+            safetensors_path, 
+            config=model_config,
+            dtype_override=dtype_override
+        )
         log_memory("After model load")
         
         # Check parameter dtypes

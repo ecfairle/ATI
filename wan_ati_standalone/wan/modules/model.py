@@ -635,17 +635,21 @@ class WanModel(ModelMixin, ConfigMixin):
         nn.init.zeros_(self.head.head.weight)
     
     @classmethod
-    def from_single_file(cls, checkpoint_path, config=None):
+    def from_single_file(cls, checkpoint_path, config=None, dtype_override=None):
         """
         Load model from a single safetensors file.
         
         Args:
             checkpoint_path: Path to the safetensors file
             config: Model configuration dict or path to config.json
+            dtype_override: If specified, convert weights to this dtype (e.g., torch.bfloat16)
         
         Returns:
             WanModel instance with loaded weights
         """
+        # Import here to avoid circular dependency
+        from ..utils.fp8_utils import load_fp8_checkpoint, get_model_size_gb
+        
         # Load config if path provided
         if isinstance(config, str):
             with open(config, 'r') as f:
@@ -662,14 +666,23 @@ class WanModel(ModelMixin, ConfigMixin):
         # Create model instance
         model = cls(**config)
         
-        # Load state dict from safetensors
-        state_dict = load_file(checkpoint_path)
-        
         # Check if this is an FP8 model
         if "fp8" in checkpoint_path.lower():
-            logging.info("Loading FP8 quantized model")
-            # For FP8 models, we need to handle the dtype carefully
-            # The weights will remain in FP8, but we'll do computations in a supported dtype
+            logging.info("Detected FP8 model from filename")
+            # For FP8 models, we should convert to a supported dtype
+            if dtype_override is None:
+                dtype_override = torch.bfloat16
+                logging.info(f"FP8 model will be converted to {dtype_override} for computation")
+            
+            # Load with FP8-aware loading
+            state_dict = load_fp8_checkpoint(checkpoint_path, device='cpu', dtype_override=dtype_override)
+        else:
+            # Load state dict from safetensors normally
+            state_dict = load_file(checkpoint_path)
+        
+        # Log model size
+        model_size_gb = get_model_size_gb(state_dict)
+        logging.info(f"Model size in memory: {model_size_gb:.2f} GB")
         
         # Load weights
         model.load_state_dict(state_dict, strict=True)

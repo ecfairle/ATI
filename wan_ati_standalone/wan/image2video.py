@@ -119,26 +119,21 @@ class WanATI:
             'eps': config.eps
         }
         
-        self.model = WanModel.from_single_file(safetensors_path, config=model_config)
-        # Keep model in fp8 if it's already quantized, otherwise convert to bfloat16
-        # The model file name suggests it's fp8_e4m3fn format
+        # Determine dtype for model loading
         if "fp8" in safetensors_path:
-            logging.info("Model appears to be in FP8 format")
-            # Check if PyTorch supports FP8
-            fp8_supported = hasattr(torch, 'float8_e4m3fn') and hasattr(torch, 'float8_e5m2')
-            if fp8_supported:
-                logging.info("PyTorch FP8 support detected")
-            else:
-                logging.warning("PyTorch FP8 support not detected - model weights will be converted")
-            
-            # FP8 models need special handling - we'll use bfloat16 for activations
+            logging.info("FP8 model detected - will convert to bfloat16 for inference")
+            dtype_override = torch.bfloat16
             self.compute_dtype = torch.bfloat16
-            # Log the model's parameter dtypes
-            param_dtypes = {str(p.dtype) for p in self.model.parameters()}
-            logging.info(f"Model parameter dtypes: {param_dtypes}")
         else:
-            self.model = self.model.to(dtype=self.param_dtype)
+            dtype_override = self.param_dtype
             self.compute_dtype = self.param_dtype
+        
+        # Load model with appropriate dtype conversion
+        self.model = WanModel.from_single_file(
+            safetensors_path, 
+            config=model_config,
+            dtype_override=dtype_override
+        )
         self.model.eval().requires_grad_(False)
 
         if t5_fsdp or dit_fsdp or use_usp:
