@@ -727,5 +727,5 @@ class WanATIRefactored:
         """
         instance = cls(config, checkpoint_dir, **kwargs)
         instance.load_vae()
-        instance.load_inference_models()
+        # instance.load_inference_models()
         return instance
