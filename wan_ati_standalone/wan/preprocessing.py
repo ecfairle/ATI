@@ -127,31 +127,22 @@ class MotionPreprocessor:
         Normalize motion tracks to [-1, 1] coordinate system
         
         Args:
-            tracks: Raw motion tracks tensor
+            tracks: Raw motion tracks tensor with shape (T, N, 4)
+                    where last dimension is [batch_idx, x, y, visibility]
             width: Video width
             height: Video height
             device: Target device
             
         Returns:
-            Normalized tracks tensor
+            Normalized tracks tensor with same shape
         """
-        # Convert to device and ensure proper dtype
-        tracks = tracks.to(device)
+        # Convert to device and add batch dimension
+        tracks = tracks.to(device)[None]  # Add batch dimension: (1, T, N, 4)
         
-        # Normalize to [-1, 1] based on aspect ratio
-        min_dim = min(height, width)
-        normalization_factor = torch.tensor(
-            [width / min_dim, height / min_dim], 
-            device=device
-        )
+        logging.info(f"[Motion Preprocessing] Input tracks shape: {tracks.shape}, "
+                    f"range: [{tracks.min():.3f}, {tracks.max():.3f}]")
         
-        normalized_tracks = tracks / normalization_factor
-        normalized_tracks = normalized_tracks.clamp(-1, 1)
-        
-        logging.info(f"[Motion Preprocessing] Tracks shape: {normalized_tracks.shape}, "
-                    f"range: [{normalized_tracks.min():.3f}, {normalized_tracks.max():.3f}]")
-        
-        return normalized_tracks
+        return tracks
 
 
 class DimensionCalculator:
@@ -310,7 +301,7 @@ class PreprocessingPipeline:
         prompt_tokens = self.text_preprocessor.preprocess_prompt(prompt)
         negative_prompt_tokens = self.text_preprocessor.preprocess_prompt(negative_prompt)
         
-        # 5. Normalize motion tracks
+        # 5. Prepare motion tracks (just convert to device and add batch dim)
         normalized_tracks = self.motion_preprocessor.normalize_tracks(
             tracks,
             dimensions['width'],
