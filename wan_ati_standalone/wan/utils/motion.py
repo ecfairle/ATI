@@ -27,9 +27,9 @@ def get_tracks_inference(tracks, height, width, quant_multi: Optional[int] = 8, 
     tracks_np = unzip_to_array(tracks)
 
     res = []
-    for track in tracks_np[0]:
+    for track in tracks_np:
         print(track)
-        res.append([{'x': t[0], 'y': t[1]} for t in track])
+        res.append([{'x': t[0]/ 8, 'y': t[1] / 8, 'v': t[2] / 8} for t in track])
     
     print("points", res)
     tracks = process_tracks(
