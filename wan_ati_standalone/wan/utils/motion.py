@@ -26,6 +26,11 @@ def get_tracks_inference(tracks, height, width, quant_multi: Optional[int] = 8, 
 
     tracks_np = unzip_to_array(tracks)
 
+    res = []
+    for track in tracks_np:
+        res.append([{'x': t[0], 'y': t[1]} for t in track])
+    
+    print("points", res)
     tracks = process_tracks(
         tracks_np, (width, height), quant_multi=quant_multi, **kwargs
     )
