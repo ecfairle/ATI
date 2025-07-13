@@ -28,6 +28,7 @@ def get_tracks_inference(tracks, height, width, quant_multi: Optional[int] = 8, 
 
     res = []
     for track in tracks_np:
+        print(track)
         res.append([{'x': t[0], 'y': t[1]} for t in track])
     
     print("points", res)
