@@ -20,7 +20,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from wan.modules.vae import WanVAE
 from wan.modules.motion_patch import patch_motion
-from wan.modules.motion import get_tracks_inference, process_tracks
+from wan.utils.motion import get_tracks_inference, process_tracks
 
 
 class InputValidator:
