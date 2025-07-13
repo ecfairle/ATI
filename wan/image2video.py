@@ -78,14 +78,14 @@ class WanATI:
         self.param_dtype = config.param_dtype
 
         shard_fn = partial(shard_model, device_id=device_id)
-        self.text_encoder = T5EncoderModel(
-            text_len=config.text_len,
-            dtype=config.t5_dtype,
-            device=torch.device('cpu'),
-            checkpoint_path=os.path.join(checkpoint_dir, config.t5_checkpoint),
-            tokenizer_path=os.path.join(checkpoint_dir, config.t5_tokenizer),
-            shard_fn=shard_fn if t5_fsdp else None,
-        )
+        # self.text_encoder = T5EncoderModel(
+        #     text_len=config.text_len,
+        #     dtype=config.t5_dtype,
+        #     device=torch.device('cpu'),
+        #     checkpoint_path=os.path.join(checkpoint_dir, config.t5_checkpoint),
+        #     tokenizer_path=os.path.join(checkpoint_dir, config.t5_tokenizer),
+        #     shard_fn=shard_fn if t5_fsdp else None,
+        # )
 
         self.vae_stride = config.vae_stride
         self.patch_size = config.patch_size
@@ -93,43 +93,43 @@ class WanATI:
             vae_pth=os.path.join(checkpoint_dir, config.vae_checkpoint),
             device=self.device)
 
-        self.clip = CLIPModel(
-            dtype=config.clip_dtype,
-            device=self.device,
-            checkpoint_path=os.path.join(checkpoint_dir,
-                                         config.clip_checkpoint),
-            tokenizer_path=os.path.join(checkpoint_dir, config.clip_tokenizer))
+        # self.clip = CLIPModel(
+        #     dtype=config.clip_dtype,
+        #     device=self.device,
+        #     checkpoint_path=os.path.join(checkpoint_dir,
+        #                                  config.clip_checkpoint),
+        #     tokenizer_path=os.path.join(checkpoint_dir, config.clip_tokenizer))
 
         logging.info(f"Creating WanModel from {checkpoint_dir}")
         safetensors_path = os.path.join(checkpoint_dir, 'Wan2_1-I2V-ATI-14B_fp8_e4m3fn.safetensors')
-        self.model = WanModel.from_single_file(safetensors_path)
-        self.model.eval().requires_grad_(False)
+        # self.model = WanModel.from_single_file(safetensors_path)
+        # self.model.eval().requires_grad_(False)
 
         if t5_fsdp or dit_fsdp or use_usp:
             init_on_cpu = False
 
-        if use_usp:
-            from xfuser.core.distributed import get_sequence_parallel_world_size
+        # if use_usp:
+        #     from xfuser.core.distributed import get_sequence_parallel_world_size
 
-            from .distributed.xdit_context_parallel import (
-                usp_attn_forward,
-                usp_dit_forward,
-            )
-            for block in self.model.blocks:
-                block.self_attn.forward = types.MethodType(
-                    usp_attn_forward, block.self_attn)
-            self.model.forward = types.MethodType(usp_dit_forward, self.model)
-            self.sp_size = get_sequence_parallel_world_size()
-        else:
-            self.sp_size = 1
+        #     from .distributed.xdit_context_parallel import (
+        #         usp_attn_forward,
+        #         usp_dit_forward,
+        #     )
+        #     for block in self.model.blocks:
+        #         block.self_attn.forward = types.MethodType(
+        #             usp_attn_forward, block.self_attn)
+        #     self.model.forward = types.MethodType(usp_dit_forward, self.model)
+        #     self.sp_size = get_sequence_parallel_world_size()
+        # else:
+        #     self.sp_size = 1
 
-        if dist.is_initialized():
-            dist.barrier()
-        if dit_fsdp:
-            self.model = shard_fn(self.model)
-        else:
-            if not init_on_cpu:
-                self.model.to(self.device)
+        # if dist.is_initialized():
+        #     dist.barrier()
+        # if dit_fsdp:
+        #     self.model = shard_fn(self.model)
+        # else:
+        #     if not init_on_cpu:
+        #         self.model.to(self.device)
 
         self.sample_neg_prompt = config.sample_neg_prompt
 
@@ -200,9 +200,9 @@ class WanATI:
         h = lat_h * self.vae_stride[1]
         w = lat_w * self.vae_stride[2]
 
-        max_seq_len = ((F - 1) // self.vae_stride[0] + 1) * lat_h * lat_w // (
-            self.patch_size[1] * self.patch_size[2])
-        max_seq_len = int(math.ceil(max_seq_len / self.sp_size)) * self.sp_size
+        # max_seq_len = ((F - 1) // self.vae_stride[0] + 1) * lat_h * lat_w // (
+        #     self.patch_size[1] * self.patch_size[2])
+        # max_seq_len = int(math.ceil(max_seq_len / self.sp_size)) * self.sp_size
 
         seed = seed if seed >= 0 else random.randint(0, sys.maxsize)
         seed_g = torch.Generator(device=self.device)
@@ -231,24 +231,24 @@ class WanATI:
             n_prompt = self.sample_neg_prompt
 
         # preprocess
-        if not self.t5_cpu:
-            self.text_encoder.model.to(self.device)
-            context = self.text_encoder([input_prompt], self.device)
-            context_null = self.text_encoder([n_prompt], self.device)
-            logging.info(f"[Text Encoder] Context shape: {context[0].shape}, range: [{context[0].min():.3f}, {context[0].max():.3f}]")
-            if offload_model:
-                self.text_encoder.model.cpu()
-        else:
-            context = self.text_encoder([input_prompt], torch.device('cpu'))
-            context_null = self.text_encoder([n_prompt], torch.device('cpu'))
-            context = [t.to(self.device) for t in context]
-            context_null = [t.to(self.device) for t in context_null]
+        # if not self.t5_cpu:
+        #     self.text_encoder.model.to(self.device)
+        #     context = self.text_encoder([input_prompt], self.device)
+        #     context_null = self.text_encoder([n_prompt], self.device)
+        #     logging.info(f"[Text Encoder] Context shape: {context[0].shape}, range: [{context[0].min():.3f}, {context[0].max():.3f}]")
+        #     if offload_model:
+        #         self.text_encoder.model.cpu()
+        # else:
+        #     context = self.text_encoder([input_prompt], torch.device('cpu'))
+        #     context_null = self.text_encoder([n_prompt], torch.device('cpu'))
+        #     context = [t.to(self.device) for t in context]
+        #     context_null = [t.to(self.device) for t in context_null]
 
-        self.clip.model.to(self.device)
-        clip_context = self.clip.visual([img[:, None, :, :]])
-        logging.info(f"[CLIP] Context shape: {clip_context.shape}, range: [{clip_context.min():.3f}, {clip_context.max():.3f}]")
-        if offload_model:
-            self.clip.model.cpu()
+        # self.clip.model.to(self.device)
+        # clip_context = self.clip.visual([img[:, None, :, :]])
+        # logging.info(f"[CLIP] Context shape: {clip_context.shape}, range: [{clip_context.min():.3f}, {clip_context.max():.3f}]")
+        # if offload_model:
+        #     self.clip.model.cpu()
 
         y = self.vae.encode([
             torch.concat([
@@ -267,6 +267,7 @@ class WanATI:
             y = patch_motion(tracks.type(y.dtype), y, training=False)
             logging.info(f"[Motion Patch] Y shape after patching: {y.shape}, range: [{y.min():.3f}, {y.max():.3f}]")
 
+        return 
         @contextmanager
         def noop_no_sync():
             yield
