@@ -486,6 +486,7 @@ class WanATIRefactored:
         # Step 2: VAE Encoding (only VAE needed)
         logging.info("Step 2: VAE encoding")
         vae_latent = self.encode_with_vae(preprocessed)
+        latent_original = vae_latent.clone()
         
         # Apply motion patching
         with torch.no_grad():
@@ -494,6 +495,9 @@ class WanATIRefactored:
                 vae_latent,
                 training=False
             )
+        
+        print(f"vae_latent shape: {vae_latent.shape} {vae_latent.dtype}, {vae_latent.min()} {vae_latent.max()}")
+        print(f"diff between vae_latent and latent_original: {torch.abs(vae_latent - latent_original).max()} {torch.abs(vae_latent - latent_original).min()}")
         
         # Step 3: Load inference models (T5, CLIP, DiT)
         logging.info("Step 3: Loading inference models")
