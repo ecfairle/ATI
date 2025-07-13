@@ -45,7 +45,8 @@ class ImagePreprocessor:
         image: torch.Tensor, 
         target_height: int, 
         target_width: int,
-        num_frames: int
+        num_frames: int,
+        device: torch.device
     ) -> torch.Tensor:
         """
         Prepare image tensor for VAE encoding
@@ -70,7 +71,7 @@ class ImagePreprocessor:
         video_tensor = torch.concat([
             resized,
             torch.zeros(3, num_frames - 1, target_height, target_width)
-        ], dim=1).cpu()
+        ], dim=1).to(device)
         
         return video_tensor
 
@@ -294,7 +295,8 @@ class PreprocessingPipeline:
             normalized_image,
             dimensions['height'],
             dimensions['width'],
-            num_frames
+            num_frames,
+            device
         )
         
         # 4. Preprocess text
