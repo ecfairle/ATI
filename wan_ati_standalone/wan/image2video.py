@@ -308,7 +308,7 @@ class WanATI:
                         0, 1),
                 torch.zeros(3, F - 1, h, w)
             ],
-                dim=1).to(self.device)
+                dim=1).cpu()
         ])[0]
         logging.info(f"[VAE Encode] Latent shape before mask: {y.shape}, range: [{y.min():.3f}, {y.max():.3f}]")
         y = torch.concat([msk, y.to(self.compute_dtype)])
