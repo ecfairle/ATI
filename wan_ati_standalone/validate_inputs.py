@@ -342,7 +342,7 @@ def print_validation_results(results: Dict[str, Any]):
     else:
         print("✗ Validation failed with issues:")
         
-    if results["all_issues"]:
+    if "all_issues" in results and results["all_issues"]:
         print("\nIssues found:")
         for issue in results["all_issues"]:
             print(f"  • {issue}")
