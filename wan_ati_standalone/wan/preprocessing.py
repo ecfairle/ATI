@@ -70,7 +70,7 @@ class ImagePreprocessor:
         # Create video tensor with first frame as image, rest as zeros
         video_tensor = torch.concat([
             resized,
-            torch.ones(3, num_frames - 1, target_height, target_width) * .5
+            torch.zeros(3, num_frames - 1, target_height, target_width)
         ], dim=1).to(device)
         
         return video_tensor
