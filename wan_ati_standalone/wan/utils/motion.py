@@ -60,6 +60,7 @@ def process_tracks(tracks_np: np.ndarray, frame_size: Tuple[int, int], quant_mul
     # tracks: shape [t, h, w, 3] => samples align with 24 fps, model trained with 16 fps.
     # frame_size: tuple (W, H)
     tracks = (torch.from_numpy(tracks_np).float() / quant_multi).floor()
+    print(frame_size, "frame_size")
     torch.save(tracks, "tracks_pre_process.pt")
     if tracks.shape[1] == 121:
         tracks = torch.permute(tracks, (1, 0, 2, 3))
