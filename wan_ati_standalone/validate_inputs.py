@@ -143,14 +143,18 @@ class InputValidator:
         aspect_ratio = h / w
         
         # Compute latent dimensions - matching image2video.py lines 245-252
-        lat_h = round(
-            np.sqrt(max_area * aspect_ratio) // self.vae_stride[1] //
-            self.patch_size[1] * self.patch_size[1])
-        lat_w = round(
-            np.sqrt(max_area / aspect_ratio) // self.vae_stride[2] //
-            self.patch_size[2] * self.patch_size[2])
-        h = lat_h * self.vae_stride[1]
-        w = lat_w * self.vae_stride[2]
+        # Compute latent dimensions - matching image2video.py lines 245-252
+        # lat_h = round(
+        #     np.sqrt(max_area * aspect_ratio) // self.vae_stride[1] //
+        #     self.patch_size[1] * self.patch_size[1])
+        # lat_w = round(
+        #     np.sqrt(max_area / aspect_ratio) // self.vae_stride[2] //
+        #     self.patch_size[2] * self.patch_size[2])
+        # h = lat_h * self.vae_stride[1]
+        # w = lat_w * self.vae_stride[2]
+
+        lat_h = h // 8
+        lat_w = w // 8
         
         # Compute max sequence length - matching image2video.py lines 254-256
         max_seq_len = ((F - 1) // self.vae_stride[0] + 1) * lat_h * lat_w // (
