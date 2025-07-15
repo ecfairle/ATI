@@ -35,6 +35,7 @@ def get_tracks_inference(tracks, height, width, quant_multi: Optional[int] = 8, 
     tracks = process_tracks(
         tracks_np, (width, height), quant_multi=quant_multi, **kwargs
     )
+    torch.save(tracks, "tracks_pre_patch.pt")
 
     return tracks
 
