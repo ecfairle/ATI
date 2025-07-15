@@ -59,6 +59,7 @@ def unzip_to_array(
 def process_tracks(tracks_np: np.ndarray, frame_size: Tuple[int, int], quant_multi: int = 8, **kwargs):
     # tracks: shape [t, h, w, 3] => samples align with 24 fps, model trained with 16 fps.
     # frame_size: tuple (W, H)
+    frame_size = (832, 480)
     tracks = (torch.from_numpy(tracks_np).float() / quant_multi).floor()
     print(frame_size, "frame_size")
     torch.save(tracks, "tracks_pre_process.pt")
