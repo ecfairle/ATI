@@ -79,4 +79,6 @@ def process_tracks(tracks_np: np.ndarray, frame_size: Tuple[int, int], quant_mul
     out_0 = out_[:1]
     out_l = out_[1:] # 121 => 120 | 1
     out_l = torch.repeat_interleave(out_l, 2, dim=0)[1::3]  # 120 => 240 => 80
+    res = torch.cat([out_0, out_l], dim=0)
+    torch.save(res, "tracks_pre_process_out.pt")
     return torch.cat([out_0, out_l], dim=0)
