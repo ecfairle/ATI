@@ -35,7 +35,6 @@ def get_tracks_inference(tracks, height, width, quant_multi: Optional[int] = 8, 
     tracks = process_tracks(
         tracks_np, (width, height), quant_multi=quant_multi, **kwargs
     )
-    torch.save(tracks, "tracks_pre_patch.pt")
 
     return tracks
 
@@ -60,8 +59,8 @@ def unzip_to_array(
 def process_tracks(tracks_np: np.ndarray, frame_size: Tuple[int, int], quant_multi: int = 8, **kwargs):
     # tracks: shape [t, h, w, 3] => samples align with 24 fps, model trained with 16 fps.
     # frame_size: tuple (W, H)
-
     tracks = torch.from_numpy(tracks_np).float() / quant_multi
+    torch.save(tracks, "tracks_pre_process.pt")
     if tracks.shape[1] == 121:
         tracks = torch.permute(tracks, (1, 0, 2, 3))
     tracks, visibles = tracks[..., :2], tracks[..., 2:3]
