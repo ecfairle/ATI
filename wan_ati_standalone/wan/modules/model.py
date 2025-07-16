@@ -717,16 +717,19 @@ class WanModel(ModelMixin, ConfigMixin):
         # Load weights - use assign=True to properly handle meta tensors
         if keep_fp8 and "fp8" in checkpoint_path.lower():
             # For FP8 models, we need to use our custom loader
-            # First, materialize the model to CPU
-            model = model.to_empty(device='cpu')
-            
-            # Use custom loader that preserves FP8 dtypes
+            # The load_state_dict_fp8 function will handle meta tensor materialization
             load_state_dict_fp8(model, state_dict, strict=True)
             
             # Patch linear layers to handle FP8 computation
             _patch_model_for_fp8(model)
         else:
-            # Use standard loading with assign=True for meta tensors
+            # For non-FP8 models, materialize meta tensors first then load
+            if any(p.is_meta for p in model.parameters()):
+                # Materialize meta tensors to the device of the state dict
+                device = next(iter(state_dict.values())).device
+                model = model.to_empty(device=device)
+            
+            # Use standard loading with assign=True for proper tensor assignment
             model.load_state_dict(state_dict, strict=True, assign=True)
         
         return model

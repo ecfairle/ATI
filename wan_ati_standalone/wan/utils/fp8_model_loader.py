@@ -19,9 +19,9 @@ def load_state_dict_fp8(model: nn.Module, state_dict: Dict[str, torch.Tensor], s
     has_meta = any(p.is_meta for p in model.parameters())
     if has_meta:
         # If model has meta tensors, we need to materialize it first
-        # This should have been done by the caller, but let's be safe
+        # Use to_empty to properly materialize meta tensors
         device = next(iter(state_dict.values())).device
-        model = model.to(device)
+        model = model.to_empty(device=device)
     
     model_state = model.state_dict()
     
