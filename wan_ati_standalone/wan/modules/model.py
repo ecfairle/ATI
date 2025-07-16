@@ -478,15 +478,16 @@ class WanModel(ModelMixin, ConfigMixin):
         # head
         self.head = Head(dim, out_dim, patch_size, eps)
 
-        # buffers (don't use register_buffer otherwise dtype will be changed in to())
+        # buffers
         assert (dim % num_heads) == 0 and (dim // num_heads) % 2 == 0
         d = dim // num_heads
-        self.freqs = torch.cat([
+        freqs = torch.cat([
             rope_params(1024, d - 4 * (d // 6)),
             rope_params(1024, 2 * (d // 6)),
             rope_params(1024, 2 * (d // 6))
         ],
                                dim=1)
+        self.register_buffer('freqs', freqs, persistent=False)
 
         if model_type == 'i2v' or model_type == 'flf2v':
             self.img_emb = MLPProj(1280, dim, flf_pos_emb=model_type == 'flf2v')
@@ -528,8 +529,6 @@ class WanModel(ModelMixin, ConfigMixin):
             assert clip_fea is not None and y is not None
         # params
         device = self.patch_embedding.weight.device
-        if self.freqs.device != device:
-            self.freqs = self.freqs.to(device)
 
         if y is not None:
             x = [torch.cat([u, v], dim=0) for u, v in zip(x, y)]
