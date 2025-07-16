@@ -170,22 +170,27 @@ class DimensionCalculator:
         Returns:
             Dictionary with computed dimensions
         """
+        # aspect_ratio = image_height / image_width
+        
+        # # Calculate latent dimensions
+        # lat_h = round(
+        #     np.sqrt(max_area * aspect_ratio) // vae_stride[1] //
+        #     patch_size[1] * patch_size[1]
+        # )
+        # lat_w = round(
+        #     np.sqrt(max_area / aspect_ratio) // vae_stride[2] //
+        #     patch_size[2] * patch_size[2]
+        # )
+        
+        # # Calculate actual dimensions
+        # height = lat_h * vae_stride[1]
+        # width = lat_w * vae_stride[2]
+        
+        height = image_height
+        width = image_width
+        lat_h = image_height // 8
+        lat_w = image_width // 8
         aspect_ratio = image_height / image_width
-        
-        # Calculate latent dimensions
-        lat_h = round(
-            np.sqrt(max_area * aspect_ratio) // vae_stride[1] //
-            patch_size[1] * patch_size[1]
-        )
-        lat_w = round(
-            np.sqrt(max_area / aspect_ratio) // vae_stride[2] //
-            patch_size[2] * patch_size[2]
-        )
-        
-        # Calculate actual dimensions
-        height = lat_h * vae_stride[1]
-        width = lat_w * vae_stride[2]
-        
         return {
             'height': height,
             'width': width,
