@@ -488,6 +488,8 @@ class WanATIRefactored:
         vae_latent = self.encode_with_vae(preprocessed)
         latent_original = vae_latent.clone()
         
+        print('saving tracks to tracks_pre_patch.pt')
+        torch.save(preprocessed['normalized_tracks'], "tracks_pre_patch.pt")
         # Apply motion patching
         with torch.no_grad():
             vae_latent = patch_motion(
@@ -499,6 +501,7 @@ class WanATIRefactored:
         print(f"vae_latent shape: {vae_latent.shape} {vae_latent.dtype}, {vae_latent.min()} {vae_latent.max()}")
         print(f"diff between vae_latent and latent_original: {torch.abs(vae_latent - latent_original).max()} {torch.abs(vae_latent - latent_original).min()}")
         torch.save(vae_latent, "vae_latent.pt")
+        torch.save(latent_original, "latent_pre_patch.pt")
         # Step 3: Load inference models (T5, CLIP, DiT)
         logging.info("Step 3: Loading inference models")
         self.load_inference_models()
