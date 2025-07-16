@@ -138,7 +138,7 @@ class MotionPreprocessor:
             Normalized tracks tensor with same shape
         """
         # Convert to device and add batch dimension
-        tracks = tracks.to(device)[None]  # Add batch dimension: (1, T, N, 4)
+        tracks = tracks  # Add batch dimension: (1, T, N, 4)
         
         logging.info(f"[Motion Preprocessing] Input tracks shape: {tracks.shape}, "
                     f"range: [{tracks.min():.3f}, {tracks.max():.3f}]")
