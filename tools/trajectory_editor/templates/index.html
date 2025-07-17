@@ -52,8 +52,10 @@
   <div id="bottomControls">
     <div class="btn-row">
       <button id="addTrackBtn">Add Freehand Track</button>
+      <button id="addTrackBtn2">Add Freehand Track 2</button>
       <button id="deleteLastBtn">Delete Last Track</button>
       <progress id="trajProgress" max="121" value="0" style="display:none;"></progress>
+      <span id="recordingIndicator" style="display:none; color:red; font-weight:bold; margin-left:10px;">● Recording... <span id="recordingTime">5.0</span>s</span>
     </div>
     <div class="btn-row">
       <button id="placeCircleBtn">Place Circle</button>
@@ -112,7 +114,9 @@
         fileIn            = document.getElementById('fileInput'),
         storeBtn          = document.getElementById('storeBtn'),
         addTrackBtn       = document.getElementById('addTrackBtn'),
+        addTrackBtn2      = document.getElementById('addTrackBtn2'),
         deleteLastBtn     = document.getElementById('deleteLastBtn'),
+        recordingIndicator = document.getElementById('recordingIndicator'),
         placeCircleBtn    = document.getElementById('placeCircleBtn'),
         addCirclePointBtn = document.getElementById('addCirclePointBtn'),
         addStaticBtn      = document.getElementById('addStaticBtn'),
@@ -137,6 +141,11 @@
   let free_tracks = [], current_track = [], drawing=false, motionCounter=0;
   let circle=null, static_trajs=[];
   let mode='', selectedTrack=null, editMode=false, editInfo=null, duplicateBuffer=null;
+  
+  // Freehand Track 2 specific variables
+  let timeBasedRecording = false;
+  let recordingInterval = null;
+  let mousePosition = {x: 0, y: 0};
   const COLORS=['red','green','blue','cyan','magenta','yellow','black'],
         FIXED_LENGTH=121,
         editSigma = 5/Math.sqrt(2*Math.log(2));
@@ -198,6 +207,14 @@
     trajProg.style.display='none';
     radiusSlider.style.display='none';
     trackSelect.innerHTML='';
+    
+    // Reset Freehand Track 2 state
+    if(recordingInterval) {
+      clearInterval(recordingInterval);
+      recordingInterval = null;
+    }
+    timeBasedRecording = false;
+    recordingIndicator.style.display = 'none';
     redraw();
   };
 
@@ -207,9 +224,71 @@
     trajProg.max=FIXED_LENGTH; trajProg.value=0;
     trajProg.style.display='inline-block';
   };
+  
+  // Freehand Track 2 - Time-based sampling
+  addTrackBtn2.onclick = ()=>{
+    if(timeBasedRecording) return; // Prevent multiple recordings
+    
+    mode='free2';
+    timeBasedRecording = true;
+    current_track = [];
+    
+    // Show recording indicator
+    recordingIndicator.style.display = 'inline';
+    trajProg.max = FIXED_LENGTH;
+    trajProg.value = 0;
+    trajProg.style.display = 'inline-block';
+    
+    // Sample every 41ms for 5 seconds (121 points)
+    const sampleInterval = 41; // 5000ms / 121 ≈ 41ms
+    let sampleCount = 0;
+    const recordingTime = document.getElementById('recordingTime');
+    
+    recordingInterval = setInterval(() => {
+      if(sampleCount >= FIXED_LENGTH) {
+        // Stop recording after 121 samples
+        clearInterval(recordingInterval);
+        recordingInterval = null;
+        timeBasedRecording = false;
+        recordingIndicator.style.display = 'none';
+        
+        // Add the completed track
+        if(current_track.length > 0) {
+          free_tracks.push(current_track.slice());
+          current_track = [];
+          updateTrackSelect();
+          redraw();
+        }
+        
+        trajProg.style.display = 'none';
+        mode = '';
+        return;
+      }
+      
+      // Sample current mouse position
+      current_track.push({x: mousePosition.x, y: mousePosition.y});
+      sampleCount++;
+      trajProg.value = sampleCount;
+      
+      // Update countdown timer
+      const remainingTime = 5.0 - (sampleCount * sampleInterval / 1000);
+      recordingTime.textContent = remainingTime.toFixed(1);
+      
+      redraw();
+    }, sampleInterval);
+  };
   deleteLastBtn.onclick = ()=>{
     if(drawing){
       drawing=false; current_track=[]; trajProg.style.display='none';
+    } else if(timeBasedRecording && recordingInterval){
+      // Stop time-based recording if in progress
+      clearInterval(recordingInterval);
+      recordingInterval = null;
+      timeBasedRecording = false;
+      recordingIndicator.style.display = 'none';
+      current_track = [];
+      trajProg.style.display = 'none';
+      mode = '';
     } else if(free_tracks.length){
       free_tracks.pop(); updateTrackSelect(); redraw();
     }
@@ -440,6 +519,10 @@ applyAllMotionBtn.onclick = () => {
   canvas.addEventListener('mousemove', e=>{
     const r=canvas.getBoundingClientRect(),
           x=e.clientX-r.left, y=e.clientY-r.top;
+    
+    // Always update mouse position for Freehand Track 2
+    mousePosition.x = x;
+    mousePosition.y = y;
     // edit mode
     if(editMode && editInfo){
       const dx=x-editInfo.startX,
