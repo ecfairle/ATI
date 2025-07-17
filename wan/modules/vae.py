@@ -610,8 +610,9 @@ def _video_vae(pretrained_path=None, z_dim=None, device='cpu', **kwargs):
 
     # load checkpoint
     logging.info(f'loading {pretrained_path}')
-    model.load_state_dict(
-        torch.load(pretrained_path, map_location=device), assign=True)
+    from safetensors.torch import load_file
+    state_dict = load_file(pretrained_path, device=device)
+    model.load_state_dict(state_dict, assign=True)
 
     return model
 
