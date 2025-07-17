@@ -228,54 +228,9 @@
   // Freehand Track 2 - Time-based sampling
   addTrackBtn2.onclick = ()=>{
     if(timeBasedRecording) return; // Prevent multiple recordings
-    
-    mode='free2';
-    timeBasedRecording = true;
-    current_track = [];
-    
-    // Show recording indicator
-    recordingIndicator.style.display = 'inline';
-    trajProg.max = FIXED_LENGTH;
-    trajProg.value = 0;
-    trajProg.style.display = 'inline-block';
-    
-    // Sample every 41ms for 5 seconds (121 points)
-    const sampleInterval = 41; // 5000ms / 121 ≈ 41ms
-    let sampleCount = 0;
-    const recordingTime = document.getElementById('recordingTime');
-    
-    recordingInterval = setInterval(() => {
-      if(sampleCount >= FIXED_LENGTH) {
-        // Stop recording after 121 samples
-        clearInterval(recordingInterval);
-        recordingInterval = null;
-        timeBasedRecording = false;
-        recordingIndicator.style.display = 'none';
-        
-        // Add the completed track
-        if(current_track.length > 0) {
-          free_tracks.push(current_track.slice());
-          current_track = [];
-          updateTrackSelect();
-          redraw();
-        }
-        
-        trajProg.style.display = 'none';
-        mode = '';
-        return;
-      }
-      
-      // Sample current mouse position
-      current_track.push({x: mousePosition.x, y: mousePosition.y});
-      sampleCount++;
-      trajProg.value = sampleCount;
-      
-      // Update countdown timer
-      const remainingTime = 5.0 - (sampleCount * sampleInterval / 1000);
-      recordingTime.textContent = remainingTime.toFixed(1);
-      
-      redraw();
-    }, sampleInterval);
+    mode='free2'; // Just set the mode, don't start recording yet
+    drawing=false;
+    current_track=[];
   };
   deleteLastBtn.onclick = ()=>{
     if(drawing){
@@ -513,6 +468,56 @@ applyAllMotionBtn.onclick = () => {
       drawing=true; motionCounter=0;
       current_track=[{x,y}];
       redraw();
+    }
+    
+    // freehand track 2 start (time-based)
+    if(mode==='free2' && !timeBasedRecording){
+      timeBasedRecording = true;
+      current_track = [{x,y}]; // Start with click position
+      
+      // Show recording indicator
+      recordingIndicator.style.display = 'inline';
+      trajProg.max = FIXED_LENGTH;
+      trajProg.value = 1; // Already have first point
+      trajProg.style.display = 'inline-block';
+      
+      // Sample every 41ms for remaining points
+      const sampleInterval = 41; // 5000ms / 121 ≈ 41ms
+      let sampleCount = 1; // Start at 1 since we have the first point
+      const recordingTime = document.getElementById('recordingTime');
+      
+      recordingInterval = setInterval(() => {
+        if(sampleCount >= FIXED_LENGTH) {
+          // Stop recording after 121 samples
+          clearInterval(recordingInterval);
+          recordingInterval = null;
+          timeBasedRecording = false;
+          recordingIndicator.style.display = 'none';
+          
+          // Add the completed track
+          if(current_track.length > 0) {
+            free_tracks.push(current_track.slice());
+            current_track = [];
+            updateTrackSelect();
+            redraw();
+          }
+          
+          trajProg.style.display = 'none';
+          mode = '';
+          return;
+        }
+        
+        // Sample current mouse position
+        current_track.push({x: mousePosition.x, y: mousePosition.y});
+        sampleCount++;
+        trajProg.value = sampleCount;
+        
+        // Update countdown timer
+        const remainingTime = 5.0 - (sampleCount * sampleInterval / 1000);
+        recordingTime.textContent = remainingTime.toFixed(1);
+        
+        redraw();
+      }, sampleInterval);
     }
   });
 
