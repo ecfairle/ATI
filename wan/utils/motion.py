@@ -55,6 +55,7 @@ def process_tracks(tracks_np: np.ndarray, frame_size: Tuple[int, int], quant_mul
     # frame_size: tuple (W, H)
 
     tracks = torch.from_numpy(tracks_np).float() / quant_multi
+    torch.save(tracks, 'tracks.pt')
     if tracks.shape[1] == 121:
         tracks = torch.permute(tracks, (1, 0, 2, 3))
     tracks, visibles = tracks[..., :2], tracks[..., 2:3]

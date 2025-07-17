@@ -176,7 +176,7 @@ class WanATI:
         ])[0]
         y = torch.concat([msk, y])
 
-        torch.save(tracks, 'tracks.pt')
+        torch.save(tracks, 'tracks_final.pt')
         with torch.no_grad():
             y = patch_motion(tracks.type(y.dtype), y, training=False)
 
