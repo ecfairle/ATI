@@ -20,7 +20,7 @@ i2v_14B.clip_checkpoint = 'models_clip_open-clip-xlm-roberta-large-vit-huge-14.p
 i2v_14B.clip_tokenizer = 'xlm-roberta-large'
 
 # vae
-i2v_14B.vae_checkpoint = 'Wan2.1_VAE.pth'
+i2v_14B.vae_checkpoint = 'wan_2.1_vae.safetensors'
 i2v_14B.vae_stride = (4, 8, 8)
 
 # transformer
