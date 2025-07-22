@@ -175,6 +175,7 @@ class WanATI:
                 dim=1).to(self.device)
         ])[0]
         torch.save(y, 'y.pt')
+        torch.save(msk, 'msk.pt')
         y = torch.concat([msk, y])
         torch.save(tracks, 'tracks_final.pt')
         with torch.no_grad():

@@ -622,7 +622,7 @@ class WanVAE:
     def __init__(self,
                  z_dim=16,
                  vae_pth='cache/vae_step_411000.pth',
-                 dtype=torch.float,
+                 dtype=torch.float16,  # Changed default to float16
                  device="cuda"):
         self.dtype = dtype
         self.device = device
@@ -635,15 +635,15 @@ class WanVAE:
             2.8184, 1.4541, 2.3275, 2.6558, 1.2196, 1.7708, 2.6052, 2.0743,
             3.2687, 2.1526, 2.8652, 1.5579, 1.6382, 1.1253, 2.8251, 1.9160
         ]
-        self.mean = torch.tensor(mean, dtype=dtype, device=device)
-        self.std = torch.tensor(std, dtype=dtype, device=device)
+        self.mean = torch.tensor(mean, dtype=self.dtype, device=self.device)  # Use self.dtype and self.device
+        self.std = torch.tensor(std, dtype=self.dtype, device=self.device)    # Use self.dtype and self.device
         self.scale = [self.mean, 1.0 / self.std]
 
         # init model
         self.model = _video_vae(
             pretrained_path=vae_pth,
             z_dim=z_dim,
-        ).eval().requires_grad_(False).to(device)
+        ).eval().requires_grad_(False).to(device=self.device, dtype=self.dtype)  # Ensure model is float16
 
     def encode(self, videos):
         """
@@ -651,7 +651,7 @@ class WanVAE:
         """
         with amp.autocast(dtype=self.dtype):
             return [
-                self.model.encode(u.unsqueeze(0), self.scale).float().squeeze(0)
+                self.model.encode(u.unsqueeze(0), self.scale).to(self.dtype).squeeze(0)
                 for u in videos
             ]
 
@@ -659,6 +659,6 @@ class WanVAE:
         with amp.autocast(dtype=self.dtype):
             return [
                 self.model.decode(u.unsqueeze(0),
-                                  self.scale).float().clamp_(-1, 1).squeeze(0)
+                                  self.scale).to(self.dtype).clamp_(-1, 1).squeeze(0)
                 for u in zs
             ]
